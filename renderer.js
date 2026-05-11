@@ -40,11 +40,26 @@ var chartInactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
 var lastControlChangeAt = Date.now();
 var isChartPausedForInactivity = false;
 
+function updateChartStatusBadge(paused) {
+    var badge = document.getElementById('chartStatusBadge');
+    if (!badge) return;
+    if (paused) {
+        badge.textContent = 'STOPPED';
+        badge.classList.remove('badge-success');
+        badge.classList.add('badge-error');
+    } else {
+        badge.textContent = 'LIVE';
+        badge.classList.remove('badge-error');
+        badge.classList.add('badge-success');
+    }
+}
+
 function markUserControlActivity() {
     lastControlChangeAt = Date.now();
     if (isChartPausedForInactivity) {
         isChartPausedForInactivity = false;
         addToLog('Chart updates resumed after user control change.');
+        updateChartStatusBadge(false);
     }
 }
 
@@ -54,6 +69,7 @@ function refreshChartPauseState() {
     if (!isChartPausedForInactivity && inactivityDurationMs >= chartInactivityTimeoutMs) {
         isChartPausedForInactivity = true;
         addToLog('Chart updates paused after 20 minutes of no control changes.');
+        updateChartStatusBadge(true);
     }
 }
 
@@ -225,11 +241,6 @@ function initChartForManual() {
     var secondaryCtx = secondaryCanvas.getContext('2d');
     var themeColors = getChartThemeColors();
 
-    primaryCanvas.style.background = themeColors.background;
-    primaryCanvas.style.borderColor = themeColors.border;
-    secondaryCanvas.style.background = themeColors.background;
-    secondaryCanvas.style.borderColor = themeColors.border;
-
     chartJsRef = new Chart(primaryCtx, {
         type: 'line',
         data: {
@@ -237,11 +248,11 @@ function initChartForManual() {
             datasets: [{
                 label: 'Heater Temperature',
                 data: [],
-                borderColor: '#40a9ff',
+                borderColor: 'rgb(59, 130, 246)',
                 backgroundColor: 'transparent',
                 borderWidth: 2,
                 pointRadius: 0,
-                tension: 0.5,
+                tension: 0.35,
                 fill: false,
                 hidden: false
             }]
@@ -249,101 +260,7 @@ function initChartForManual() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { mode: 'nearest', intersect: false },
-            animation: false,
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { 
-                        color: themeColors.text,
-                        font: { size: 14, family: 'Inter, sans-serif' },
-                        autoSkip: true,          // automatically skip labels
-                        maxTicksLimit: 10        // show at most 10 time labels
-                    }
-                },
-                y: {
-                    type: 'linear',
-                    position: 'left',
-                    title: { 
-                        display: true, 
-                        text: 'Temperature (°C)', 
-                        color: themeColors.text,
-                        font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
-                    },
-                    grid: { color: 'rgba(148, 163, 184, 0.1)', display: true },
-                    ticks: { 
-                        color: themeColors.text,
-                        font: { size: 14, family: 'Inter, sans-serif' },
-                        callback: function(value) {
-                            return Math.round(value) + '°C';
-                        }
-                    },
-                    beginAtZero: false,
-                    suggestedMin: 0,
-                    suggestedMax: 100
-                }
-            },
-            plugins: { 
-                legend: { 
-                    position: 'right', 
-                    labels: { 
-                        color: themeColors.text,
-                        font: { size: 14, family: 'Inter, sans-serif' },
-                        padding: 12,
-                        usePointStyle: true,
-                        generateLabels: function(chart) {
-                            var original = Chart.defaults.plugins.legend.labels.generateLabels;
-                            var labels = original.call(this, chart);
-                            // Update point style based on visibility
-                            labels.forEach(function(label, index) {
-                                var meta = chart.getDatasetMeta(index);
-                                // Check if dataset is hidden (meta.hidden can be true, false, or null)
-                                var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
-                                if (isHidden) {
-                                    // When hidden, show only border (unfilled)
-                                    label.fillStyle = 'transparent';
-                                } else {
-                                    // When visible, show filled circle
-                                    label.fillStyle = label.strokeStyle;
-                                }
-                            });
-                            return labels;
-                        }
-                    },
-                    onClick: function(e, legendItem, legend) {
-                        var index = legendItem.datasetIndex;
-                        var ci = legend.chart;
-                        var meta = ci.getDatasetMeta(index);
-                        
-                        // Toggle visibility
-                        meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
-                        ci.update();
-                    }
-                }
-            }
-        }
-    });
-
-    window.liveChartRef = new Chart(secondaryCtx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Power',
-                data: [],
-                borderColor: '#ff0000',
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                pointRadius: 0,
-                tension: 0.5,
-                fill: false,
-                hidden: false
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'nearest', intersect: false },
+            interaction: { mode: 'index', intersect: false },
             animation: false,
             scales: {
                 x: {
@@ -360,7 +277,95 @@ function initChartForManual() {
                     position: 'left',
                     title: {
                         display: true,
-                        text: 'Power',
+                        text: 'Temperature (°C)',
+                        color: themeColors.text,
+                        font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
+                    },
+                    grid: { color: 'rgba(148, 163, 184, 0.1)', display: true },
+                    ticks: {
+                        color: themeColors.text,
+                        font: { size: 14, family: 'Inter, sans-serif' },
+                        callback: function(value) {
+                            return Math.round(value) + '°C';
+                        }
+                    },
+                    beginAtZero: false,
+                    suggestedMin: 0,
+                    suggestedMax: 100
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: themeColors.text,
+                        font: { size: 14, family: 'Inter, sans-serif' },
+                        padding: 12,
+                        usePointStyle: true,
+                        generateLabels: function(chart) {
+                            var original = Chart.defaults.plugins.legend.labels.generateLabels;
+                            var labels = original.call(this, chart);
+                            labels.forEach(function(label, index) {
+                                var meta = chart.getDatasetMeta(index);
+                                var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
+                                if (isHidden) {
+                                    label.fillStyle = 'transparent';
+                                } else {
+                                    label.fillStyle = label.strokeStyle;
+                                }
+                            });
+                            return labels;
+                        }
+                    },
+                    onClick: function(e, legendItem, legend) {
+                        var index = legendItem.datasetIndex;
+                        var ci = legend.chart;
+                        var meta = ci.getDatasetMeta(index);
+                        meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                        ci.update();
+                    }
+                }
+            }
+        }
+    });
+
+    window.liveChartRef = new Chart(secondaryCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Power',
+                data: [],
+                borderColor: 'rgb(16, 185, 129)',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.35,
+                fill: false,
+                hidden: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            animation: false,
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: themeColors.text,
+                        font: { size: 14, family: 'Inter, sans-serif' },
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Power (%)',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
@@ -379,18 +384,39 @@ function initChartForManual() {
             },
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: 'top',
                     labels: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         padding: 12,
-                        usePointStyle: true
+                        usePointStyle: true,
+                        generateLabels: function(chart) {
+                            var original = Chart.defaults.plugins.legend.labels.generateLabels;
+                            var labels = original.call(this, chart);
+                            labels.forEach(function(label, index) {
+                                var meta = chart.getDatasetMeta(index);
+                                var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
+                                if (isHidden) {
+                                    label.fillStyle = 'transparent';
+                                } else {
+                                    label.fillStyle = label.strokeStyle;
+                                }
+                            });
+                            return labels;
+                        }
+                    },
+                    onClick: function(e, legendItem, legend) {
+                        var index = legendItem.datasetIndex;
+                        var ci = legend.chart;
+                        var meta = ci.getDatasetMeta(index);
+                        meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                        ci.update();
                     }
                 }
             }
         }
     });
-    
+
     // Update chart data structure for manual mode
     chartData.series = Array.from({ length: 2 }, function () { return []; });
     chartData.enabled = Array.from({ length: 2 }, function () { return true; });
@@ -418,11 +444,6 @@ function initChartForOnOff() {
     var primaryCtx = primaryCanvas.getContext('2d');
     var secondaryCtx = secondaryCanvas.getContext('2d');
     var themeColors = getChartThemeColors();
-    primaryCanvas.style.background = themeColors.background;
-    primaryCanvas.style.borderColor = themeColors.border;
-    secondaryCanvas.style.background = themeColors.background;
-    secondaryCanvas.style.borderColor = themeColors.border;
-
     chartJsRef = new Chart(primaryCtx, {
         type: 'line',
         data: {
@@ -431,11 +452,11 @@ function initChartForOnOff() {
                 {
                     label: 'Heater Temperature',
                     data: [],
-                    borderColor: '#40a9ff',
+                    borderColor: 'rgb(59, 130, 246)',
                     backgroundColor: 'transparent',
                     borderWidth: 2,
                     pointRadius: 0,
-                    tension: 0.5,
+                    tension: 0.35,
                     fill: false,
                     spanGaps: true,
                     hidden: false
@@ -443,11 +464,12 @@ function initChartForOnOff() {
                 {
                     label: 'Target Temperature',
                     data: [],
-                    borderColor: '#ff007a',
+                    borderColor: 'rgb(251, 191, 36)',
                     backgroundColor: 'transparent',
                     borderWidth: 2,
+                    borderDash: [6, 4],
                     pointRadius: 0,
-                    tension: 0.5,
+                    tension: 0.35,
                     fill: false,
                     spanGaps: true,
                     hidden: false
@@ -455,11 +477,11 @@ function initChartForOnOff() {
                 {
                     label: 'Hysteresis Low',
                     data: [],
-                    borderColor: '#fa8c16',
+                    borderColor: 'rgb(249, 115, 22)',
                     backgroundColor: 'transparent',
                     borderWidth: 1,
                     pointRadius: 0,
-                    tension: 0.5,
+                    tension: 0.35,
                     fill: false,
                     spanGaps: true,
                     borderDash: [5, 5],
@@ -471,11 +493,11 @@ function initChartForOnOff() {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
-            interaction: { mode: 'nearest', intersect: false },
-            plugins: { 
-                legend: { 
-                    position: 'right', 
-                    labels: { 
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         padding: 12,
@@ -483,16 +505,12 @@ function initChartForOnOff() {
                         generateLabels: function(chart) {
                             var original = Chart.defaults.plugins.legend.labels.generateLabels;
                             var labels = original.call(this, chart);
-                            // Update point style based on visibility
                             labels.forEach(function(label, index) {
                                 var meta = chart.getDatasetMeta(index);
-                                // Check if dataset is hidden (meta.hidden can be true, false, or null)
                                 var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
                                 if (isHidden) {
-                                    // When hidden, show only border (unfilled)
                                     label.fillStyle = 'transparent';
                                 } else {
-                                    // When visible, show filled circle
                                     label.fillStyle = label.strokeStyle;
                                 }
                             });
@@ -503,8 +521,6 @@ function initChartForOnOff() {
                         var index = legendItem.datasetIndex;
                         var ci = legend.chart;
                         var meta = ci.getDatasetMeta(index);
-                        
-                        // Toggle visibility for all datasets (including hysteresis)
                         meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
                         ci.update();
                     }
@@ -513,24 +529,24 @@ function initChartForOnOff() {
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { 
+                    ticks: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
-                        autoSkip: true,          // automatically skip labels
-                        maxTicksLimit: 10        // show at most 10 time labels
+                        autoSkip: true,
+                        maxTicksLimit: 10
                     }
                 },
                 y: {
                     type: 'linear',
                     position: 'left',
-                    title: { 
-                        display: true, 
-                        text: 'Temperature (°C)', 
+                    title: {
+                        display: true,
+                        text: 'Temperature (°C)',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
                     grid: { color: 'rgba(148, 163, 184, 0.1)', display: true },
-                    ticks: { 
+                    ticks: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         callback: function(value) {
@@ -552,11 +568,11 @@ function initChartForOnOff() {
             datasets: [{
                 label: 'Power',
                 data: [],
-                borderColor: '#ff0000',
+                borderColor: 'rgb(16, 185, 129)',
                 backgroundColor: 'transparent',
                 borderWidth: 2,
                 pointRadius: 0,
-                tension: 0.5,
+                tension: 0.35,
                 fill: false,
                 hidden: false
             }]
@@ -565,15 +581,36 @@ function initChartForOnOff() {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
-            interaction: { mode: 'nearest', intersect: false },
+            interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: 'top',
                     labels: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         padding: 12,
-                        usePointStyle: true
+                        usePointStyle: true,
+                        generateLabels: function(chart) {
+                            var original = Chart.defaults.plugins.legend.labels.generateLabels;
+                            var labels = original.call(this, chart);
+                            labels.forEach(function(label, index) {
+                                var meta = chart.getDatasetMeta(index);
+                                var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
+                                if (isHidden) {
+                                    label.fillStyle = 'transparent';
+                                } else {
+                                    label.fillStyle = label.strokeStyle;
+                                }
+                            });
+                            return labels;
+                        }
+                    },
+                    onClick: function(e, legendItem, legend) {
+                        var index = legendItem.datasetIndex;
+                        var ci = legend.chart;
+                        var meta = ci.getDatasetMeta(index);
+                        meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
+                        ci.update();
                     }
                 }
             },
@@ -592,7 +629,7 @@ function initChartForOnOff() {
                     position: 'left',
                     title: {
                         display: true,
-                        text: 'Power',
+                        text: 'Power (%)',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
@@ -611,7 +648,7 @@ function initChartForOnOff() {
             }
         }
     });
-    
+
     // Update chart data structure for onoff mode
     chartData.series = Array.from({ length: 4 }, function () { return []; });
     chartData.enabled = Array.from({ length: 4 }, function () { return true; });
@@ -662,29 +699,36 @@ function initChartForPID(controlType) {
     
     // Secondary Y-axis series (varies by control type)
     var secondarySeries = [];
+    // Mid-tone colors chosen so each line is legible on both light and dark themes.
+    var pidColors = {
+        Output: '#8b5cf6',        // violet-500
+        Proportional: '#eab308',  // amber-500
+        Integral: '#16a34a',      // green-600
+        Derivative: '#0891b2'     // cyan-700
+    };
     if (controlType === 'P') {
         secondarySeries = [
-            { label: 'Output', color: '#ffffff' },
-            { label: 'Proportional', color: '#f7e40c' }
+            { label: 'Output', color: pidColors.Output },
+            { label: 'Proportional', color: pidColors.Proportional }
         ];
     } else if (controlType === 'PI') {
         secondarySeries = [
-            { label: 'Output', color: '#ffffff' },
-            { label: 'Proportional', color: '#f7e40c' },
-            { label: 'Integral', color: '#00ff00' }
+            { label: 'Output', color: pidColors.Output },
+            { label: 'Proportional', color: pidColors.Proportional },
+            { label: 'Integral', color: pidColors.Integral }
         ];
     } else if (controlType === 'PD') {
         secondarySeries = [
-            { label: 'Output', color: '#ffffff' },
-            { label: 'Proportional', color: '#f7e40c' },
-            { label: 'Derivative', color: '#02e0c6' }
+            { label: 'Output', color: pidColors.Output },
+            { label: 'Proportional', color: pidColors.Proportional },
+            { label: 'Derivative', color: pidColors.Derivative }
         ];
     } else if (controlType === 'PID') {
         secondarySeries = [
-            { label: 'Output', color: '#ffffff' },
-            { label: 'Proportional', color: '#f7e40c' },
-            { label: 'Integral', color: '#00ff00' },
-            { label: 'Derivative', color: '#02e0c6' }
+            { label: 'Output', color: pidColors.Output },
+            { label: 'Proportional', color: pidColors.Proportional },
+            { label: 'Integral', color: pidColors.Integral },
+            { label: 'Derivative', color: pidColors.Derivative }
         ];
     }
     
@@ -853,7 +897,21 @@ function initChartForPID(controlType) {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         padding: 12,
-                        usePointStyle: true
+                        usePointStyle: true,
+                        generateLabels: function(chart) {
+                            var original = Chart.defaults.plugins.legend.labels.generateLabels;
+                            var labels = original.call(this, chart);
+                            labels.forEach(function(label, index) {
+                                var meta = chart.getDatasetMeta(index);
+                                var isHidden = meta.hidden === true || (meta.hidden === null && chart.data.datasets[index].hidden === true);
+                                if (isHidden) {
+                                    label.fillStyle = 'transparent';
+                                } else {
+                                    label.fillStyle = label.strokeStyle;
+                                }
+                            });
+                            return labels;
+                        }
                     },
                     onClick: function(e, legendItem, legend) {
                         var index = legendItem.datasetIndex;
@@ -1261,20 +1319,11 @@ const fanTooltip = document.getElementById('fanTooltip');
 const heaterTempInput = document.getElementById('heaterTemp');
 const heaterTempValue = document.getElementById('heaterTempValue');
 const heaterTooltip = document.getElementById('heaterTooltip');
-const heaterOffBtn = document.getElementById('heaterOff');
-const heaterLeftBtn = document.getElementById('heaterLeft');
-const heaterRightBtn = document.getElementById('heaterRight');
-const coolerBtn = document.getElementById('coolerBtn');
 const fanOffBtn = document.getElementById('fanOff');
 const fan50Btn = document.getElementById('fan50');
 const fan100Btn = document.getElementById('fan100');
-var heaterMode = 0; // 0=off,1=left,2=right,3=cooler
-var coolerEnabled = false; // Track cooler state: false=off, true=on
 var simulationWindow = null; // Track simulation window reference
 var curriculumWindow = null; // Track curriculum window reference
-var graphWindow = null; // Track graph window reference
-var heaterLeftTemp = 0; // Store left heater temperature
-var heaterRightTemp = 0; // Store right heater temperature
 var safetyCommandsSent = false; // Track if safety commands were sent after reconnection
 var wasInUnsafeState = false; // Track if system was in unsafe state when disconnected
 
@@ -1375,7 +1424,7 @@ function setSafeValuesOffline() {
     var currentFanSpeed = fanSpeedInput ? parseInt(fanSpeedInput.value, 10) : 0;
     var currentHeaterTemp = heaterTempInput ? parseInt(heaterTempInput.value, 10) : 20;
 
-    wasInUnsafeState = (heaterMode !== 0 || currentFanSpeed > 30 || currentHeaterTemp > 30);
+    wasInUnsafeState = (currentFanSpeed > 30 || currentHeaterTemp > 30);
 
     if (wasInUnsafeState) {
         addToLog('System was in unsafe state - will send shutdown commands on reconnection');
@@ -1406,16 +1455,7 @@ function setSafeValuesOffline() {
         addToLog('Heater slider set to 20°C (minimum position)');
     }
 
-    // Turn heater off (mode 0)
-    heaterMode = 0;
-    updateHeaterButtons();
-
-    // Turn cooler on (for safety cooling)
-    if (coolerBtn) {
-        coolerBtn.classList.add('active');
-    }
-
-    addToLog('Safe values set: Fan=0%, Heater=20°C, Heater=OFF, Cooler=ON');
+    addToLog('Safe values set: Fan=0%, Heater=20°C');
 }
 
 // Safety function: Send shutdown commands when hardware reconnects (only if system was unsafe)
@@ -1449,12 +1489,6 @@ async function sendShutdownCommandsOnReconnect() {
         var powerResult = await window.electronAPI.sendPower(0);
         if (powerResult && powerResult.success) {
             addToLog('Power set to 0%');
-        }
-
-        // 4. Send heater off command
-        var heaterOffResult = await window.electronAPI.setHeaterMode(0);
-        if (heaterOffResult && heaterOffResult.success) {
-            addToLog('Heater turned OFF');
         }
 
         addToLog('All initialization commands sent - System is in safe state');
@@ -1520,12 +1554,6 @@ async function sendShutdownCommandsOnReconnect() {
             powerSliderFill.style.width = '0%';
         }
 
-        // Update heater mode to OFF
-        heaterMode = 0;
-        if (typeof updateHeaterButtons === 'function') {
-            updateHeaterButtons();
-        }
-
         addToLog('UI updated to match safe state');
 
     } catch (error) {
@@ -1547,13 +1575,13 @@ function updateConnectionStatus(connected, portInfo) {
     var systemStatusIndicator = document.getElementById('systemStatusIndicator');
     if (systemStatusIndicator) {
         if (connected) {
-            if (systemStatusIndicator) systemStatusIndicator.textContent = 'SYSTEM ONLINE';
-            systemStatusIndicator.classList.remove('offline');
-            systemStatusIndicator.classList.add('online');
+            systemStatusIndicator.textContent = 'SYSTEM ONLINE';
+            systemStatusIndicator.classList.remove('badge-error', 'offline');
+            systemStatusIndicator.classList.add('badge-success', 'online');
         } else {
-            if (systemStatusIndicator) systemStatusIndicator.textContent = 'SYSTEM OFFLINE';
-            systemStatusIndicator.classList.remove('online');
-            systemStatusIndicator.classList.add('offline');
+            systemStatusIndicator.textContent = 'SYSTEM OFFLINE';
+            systemStatusIndicator.classList.remove('badge-success', 'online');
+            systemStatusIndicator.classList.add('badge-error', 'offline');
         }
     }
 
@@ -1571,6 +1599,7 @@ function updateConnectionStatus(connected, portInfo) {
             // Clear all graphs when device reconnects
             clearAllGraphs();
             addToLog('Device reconnected - graphs cleared, restarting data collection');
+            markUserControlActivity();
 
             // Send safety shutdown commands only when hardware actually reconnects (not on every packet)
             setTimeout(() => {
@@ -1589,6 +1618,7 @@ function updateConnectionStatus(connected, portInfo) {
         // Set safe values only when hardware actually goes offline (not on every disconnection check)
         if (wasConnected && !connected) {
             setSafeValuesOffline();
+            markUserControlActivity();
         }
     }
 }
@@ -1740,11 +1770,9 @@ function handleIncomingData(data) {
                 addToLog('DEBUG: This matches the 22 22 22 pattern (heater mode)!');
             } else if (dataArray[0] === 0x33 && dataArray[1] === 0x33 && dataArray[2] === 0x33) {
                 addToLog('DEBUG: This matches the 33 33 33 pattern (heater temperature)!');
-            } else if (dataArray[0] === 0x44 && dataArray[1] === 0x44 && dataArray[2] === 0x44) {
-                addToLog('DEBUG: This matches the 44 44 44 pattern (cooler state)!');
             } else {
                 addToLog('DEBUG: This does NOT match any known 4-byte pattern');
-                addToLog('DEBUG: Looking for: 0x11 0x11 0x11 (fan) or 0x22 0x22 0x22 (heater mode) or 0x33 0x33 0x33 (heater temp) or 0x44 0x44 0x44 (cooler)');
+                addToLog('DEBUG: Looking for: 0x11 0x11 0x11 (fan) or 0x22 0x22 0x22 (heater mode) or 0x33 0x33 0x33 (heater temp)');
             }
         } else {
             addToLog('DEBUG: Not a 4-byte packet, length is: ' + dataArray.length);
@@ -1770,28 +1798,6 @@ function handleIncomingData(data) {
         return; // Exit early since this is a 4-byte packet
     }
 
-    // Check for heater mode data - format: [0x22, 0x22, 0x22, mode] (exactly 4 bytes)
-    if (dataArray.length === 4 && dataArray[0] === 0x22 && dataArray[1] === 0x22 && dataArray[2] === 0x22) {
-        var heaterMode = dataArray[3]; // Heater mode value (0=off, 1=left, 2=right)
-
-        // Debug: Print the received data
-        var hexString = dataArray.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ');
-        addToLog('DEBUG: Received 4-byte heater mode data: ' + hexString);
-        addToLog('DEBUG: Heater mode value: ' + heaterMode);
-        addToLog('DEBUG: About to call updateHeaterButtonsFromHardware with mode: ' + heaterMode);
-
-        // Validate heater mode range
-        if (heaterMode >= 0 && heaterMode <= 2) {
-            addToLog('DEBUG: Heater mode is valid, calling updateHeaterButtonsFromHardware...');
-            updateHeaterButtonsFromHardware(heaterMode);
-            var modeText = heaterMode === 0 ? 'Off' : (heaterMode === 1 ? 'Left' : 'Right');
-            addToLog('Heater mode received from hardware: ' + modeText);
-        } else {
-            addToLog('Invalid heater mode value: ' + heaterMode);
-        }
-        return; // Exit early since this is a 4-byte packet
-    }
-
     // Check for heater temperature data - format: [0x33, 0x33, 0x33, temp] (exactly 4 bytes)
     if (dataArray.length === 4 && dataArray[0] === 0x33 && dataArray[1] === 0x33 && dataArray[2] === 0x33) {
         var heaterTemp = dataArray[3]; // Heater temperature value (20-70°C)
@@ -1809,28 +1815,6 @@ function handleIncomingData(data) {
             addToLog('Heater temperature received from hardware: ' + heaterTemp + '°C');
         } else {
             addToLog('Invalid heater temperature value: ' + heaterTemp + ' (expected 20-70)');
-        }
-        return; // Exit early since this is a 4-byte packet
-    }
-
-    // Check for cooler state data - format: [0x44, 0x44, 0x44, state] (exactly 4 bytes)
-    if (dataArray.length === 4 && dataArray[0] === 0x44 && dataArray[1] === 0x44 && dataArray[2] === 0x44) {
-        var coolerState = dataArray[3]; // Cooler state value (0=off, 1=on)
-
-        // Debug: Print the received data
-        var hexString = dataArray.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ');
-        addToLog('DEBUG: Received 4-byte cooler state data: ' + hexString);
-        addToLog('DEBUG: Cooler state value: ' + coolerState);
-        addToLog('DEBUG: About to call updateCoolerButtonFromHardware with state: ' + coolerState);
-
-        // Validate cooler state range (0-1)
-        if (coolerState === 0 || coolerState === 1) {
-            addToLog('DEBUG: Cooler state is valid, calling updateCoolerButtonFromHardware...');
-            updateCoolerButtonFromHardware(coolerState);
-            var stateText = coolerState === 0 ? 'OFF' : 'ON';
-            addToLog('Cooler state received from hardware: ' + stateText);
-        } else {
-            addToLog('Invalid cooler state value: ' + coolerState + ' (expected 0 or 1)');
         }
         return; // Exit early since this is a 4-byte packet
     }
@@ -1925,30 +1909,6 @@ function updateFanSliderFromHardware(fanSpeed) {
     }
 }
 
-// Function to update heater buttons when receiving data from hardware
-function updateHeaterButtonsFromHardware(mode) {
-    addToLog('DEBUG: updateHeaterButtonsFromHardware called with mode: ' + mode);
-
-    // Ensure heater mode is within valid range (0-2)
-    mode = Math.max(0, Math.min(2, mode));
-
-    addToLog('DEBUG: Updating heater buttons to mode: ' + mode);
-    addToLog('DEBUG: heaterOffBtn element found: ' + (heaterOffBtn ? 'YES' : 'NO'));
-    addToLog('DEBUG: heaterLeftBtn element found: ' + (heaterLeftBtn ? 'YES' : 'NO'));
-    addToLog('DEBUG: heaterRightBtn element found: ' + (heaterRightBtn ? 'YES' : 'NO'));
-
-    // Update the global heater mode variable
-    addToLog('DEBUG: Setting heaterMode from ' + heaterMode + ' to ' + mode);
-    heaterMode = mode;
-
-    // Update the button states
-    addToLog('DEBUG: Calling updateHeaterButtons()...');
-    updateHeaterButtons();
-
-    addToLog('DEBUG: updateHeaterButtons() completed');
-    addToLog('Heater buttons updated from hardware: mode ' + mode);
-}
-
 // Function to update heater slider when receiving data from hardware
 function updateHeaterSliderFromHardware(temperature) {
     // Ensure heater temperature is within valid range (20-70°C)
@@ -1983,85 +1943,6 @@ function updateHeaterSliderFromHardware(temperature) {
     }
 }
 
-// Function to update cooler button when receiving data from hardware
-function updateCoolerButtonFromHardware(state) {
-    // Ensure cooler state is valid (0 or 1)
-    state = state === 1 ? 1 : 0;
-
-    // Update global state
-    coolerEnabled = state === 1;
-
-    addToLog('DEBUG: Updating cooler button to state: ' + (state ? 'ON' : 'OFF'));
-    addToLog('DEBUG: coolerBtn element found: ' + (coolerBtn ? 'YES' : 'NO'));
-
-    // Update the cooler button state
-    if (coolerBtn) {
-        if (state === 1) {
-            // Cooler is ON - button should say "Cooler Off" (to turn it off)
-            coolerBtn.classList.add('active');
-            coolerBtn.textContent = 'Cooler Off';
-            addToLog('DEBUG: Added active class to coolerBtn (ON)');
-        } else {
-            // Cooler is OFF - button should say "Cooler On" (to turn it on)
-            coolerBtn.classList.remove('active');
-            coolerBtn.textContent = 'Cooler On';
-            addToLog('DEBUG: Removed active class from coolerBtn (OFF)');
-        }
-
-        addToLog('Cooler button updated from hardware: ' + (state ? 'ON' : 'OFF'));
-    } else {
-        addToLog('ERROR: coolerBtn element not found!');
-    }
-}
-
-// Test function to manually test heater button updates
-function testHeaterButtons() {
-    addToLog('TEST: Testing heater button updates...');
-
-    // Test mode 0 (off)
-    addToLog('TEST: Setting heater mode to 0 (off)');
-    updateHeaterButtonsFromHardware(0);
-
-    setTimeout(() => {
-        addToLog('TEST: Setting heater mode to 1 (left)');
-        updateHeaterButtonsFromHardware(1);
-    }, 1000);
-
-    setTimeout(() => {
-        addToLog('TEST: Setting heater mode to 2 (right)');
-        updateHeaterButtonsFromHardware(2);
-    }, 2000);
-
-    setTimeout(() => {
-        addToLog('TEST: Setting heater mode to 0 (off) again');
-        updateHeaterButtonsFromHardware(0);
-    }, 3000);
-}
-
-// Test function to simulate 4-byte heater mode data
-function testHeaterModeData() {
-    addToLog('TEST: Simulating 4-byte heater mode data...');
-
-    // Simulate [0x22, 0x22, 0x22, 1] for left heater
-    var testData = [0x22, 0x22, 0x22, 1];
-    addToLog('TEST: Sending test data: ' + testData.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-    handleIncomingData(testData);
-
-    setTimeout(() => {
-        // Simulate [0x22, 0x22, 0x22, 2] for right heater
-        var testData2 = [0x22, 0x22, 0x22, 2];
-        addToLog('TEST: Sending test data: ' + testData2.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData2);
-    }, 2000);
-
-    setTimeout(() => {
-        // Simulate [0x22, 0x22, 0x22, 0] for off
-        var testData3 = [0x22, 0x22, 0x22, 0];
-        addToLog('TEST: Sending test data: ' + testData3.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData3);
-    }, 4000);
-}
-
 // Test function to simulate 4-byte heater temperature data
 function testHeaterTempData() {
     addToLog('TEST: Simulating 4-byte heater temperature data...');
@@ -2081,30 +1962,6 @@ function testHeaterTempData() {
     setTimeout(() => {
         // Simulate [0x33, 0x33, 0x33, 25] for 25°C
         var testData3 = [0x33, 0x33, 0x33, 25];
-        addToLog('TEST: Sending test data: ' + testData3.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData3);
-    }, 4000);
-}
-
-// Test function to simulate 4-byte cooler state data
-function testCoolerStateData() {
-    addToLog('TEST: Simulating 4-byte cooler state data...');
-
-    // Simulate [0x44, 0x44, 0x44, 1] for cooler ON
-    var testData = [0x44, 0x44, 0x44, 1];
-    addToLog('TEST: Sending test data: ' + testData.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-    handleIncomingData(testData);
-
-    setTimeout(() => {
-        // Simulate [0x44, 0x44, 0x44, 0] for cooler OFF
-        var testData2 = [0x44, 0x44, 0x44, 0];
-        addToLog('TEST: Sending test data: ' + testData2.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData2);
-    }, 2000);
-
-    setTimeout(() => {
-        // Simulate [0x44, 0x44, 0x44, 1] for cooler ON again
-        var testData3 = [0x44, 0x44, 0x44, 1];
         addToLog('TEST: Sending test data: ' + testData3.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
         handleIncomingData(testData3);
     }, 4000);
@@ -2206,41 +2063,6 @@ function parseAndDisplayData(dataArray) {
             parsedInfo += 'Sensor ' + (sensorIndex + 1) + ': ' + validatedTemp.toFixed(2) + '\u00B0C\n';
         }
 
-        // Display heater temperatures in tiles (bytes 36-43)
-        if (actualData.length >= 44) {
-            var hb0 = actualData[36], hb1 = actualData[37], hb2 = actualData[38], hb3 = actualData[39];
-            var hbuf1 = new ArrayBuffer(4);
-            var hdv1 = new DataView(hbuf1);
-            hdv1.setUint8(0, hb0); hdv1.setUint8(1, hb1); hdv1.setUint8(2, hb2); hdv1.setUint8(3, hb3);
-            var rawHeaterLeftTemp = hdv1.getFloat32(0, true);
-            // Validate temperature: if > 200 or < -10, set to 0.00
-            heaterLeftTemp = validateTemperature(rawHeaterLeftTemp);
-
-            // Linear Heater (bytes 40-43)
-            var hb4 = actualData[40], hb5 = actualData[41], hb6 = actualData[42], hb7 = actualData[43];
-            var hbuf2 = new ArrayBuffer(4);
-            var hdv2 = new DataView(hbuf2);
-            hdv2.setUint8(0, hb4); hdv2.setUint8(1, hb5); hdv2.setUint8(2, hb6); hdv2.setUint8(3, hb7);
-            var rawHeaterRightTemp = hdv2.getFloat32(0, true);
-            // Validate temperature: if > 200 or < -10, set to 0.00
-            heaterRightTemp = validateTemperature(rawHeaterRightTemp);
-            var heaterRightEl = document.getElementById('heaterRightTile');
-            if (heaterRightEl) {
-                var textSpan = heaterRightEl.querySelector('.tile-text');
-                if (textSpan) {
-                    textSpan.textContent = 'Linear Heater: ' + heaterRightTemp.toFixed(2) + '°C';
-                } else {
-                    heaterRightEl.textContent = 'Linear Heater: ' + heaterRightTemp.toFixed(2) + '°C';
-                }
-                // Keep text white, add border glow: Blue at 1.0°C, Red at 75°C
-                var color = getTemperatureColor(heaterRightTemp);
-                heaterRightEl.style.color = '#ffffff';
-                heaterRightEl.style.boxShadow = '0 0 10px ' + color + ', 0 0 20px ' + color;
-            }
-
-            // Update button text with temperatures
-            updateHeaterButtons();
-        }
 
         // Bytes 34..37 (actualData[32..35]): time as float32 (little-endian)
         if (actualData.length >= 36) {
@@ -2310,12 +2132,6 @@ function parseAndDisplayData(dataArray) {
                 parsedInfo += 'Sensor ' + (9 + extraIndex) + ': ' + etemp.toFixed(2) + '\u00B0C\n';
                 // Heater elements are now handled in the main parsing section
 
-                // Store heater temperatures for display (already validated above, but update here too)
-                if (extraIndex === 0) {
-                    heaterLeftTemp = etemp;
-                } else {
-                    heaterRightTemp = etemp;
-                }
             }
         }
 
@@ -2493,20 +2309,33 @@ function downloadCsvFile(csvContent) {
 }
 
 function getChartThemeColors() {
+    var theme = document.documentElement.getAttribute('data-theme');
+    var isDark = theme !== 'light';
     return {
-        background: '#1a1a1a',
-        border: '#444444',
-        grid: '#444444',
-        text: '#ffffff'  // Changed from #eeeeee to #ffffff for better readability
+        background: 'transparent',
+        border: 'transparent',
+        grid: 'rgba(148, 163, 184, 0.1)',
+        text: isDark ? '#ffffff' : '#1e293b'
     };
 }
 
 function applyTheme(themeKey) {
+    var resolved = themeKey === 'light' ? 'light' : 'dark';
     var body = document.body;
-    body.classList.remove('theme-light');
-    body.classList.remove('theme-dark');
-    body.classList.add('theme-dark');
+    body.classList.remove('theme-light', 'theme-dark');
+    body.classList.add('theme-' + resolved);
+    document.documentElement.setAttribute('data-theme', resolved);
     updateChartTheme();
+    updateLogoForTheme();
+}
+
+function updateLogoForTheme() {
+    var img = document.getElementById('matrixLogo');
+    if (!img) return;
+    var theme = document.documentElement.getAttribute('data-theme');
+    img.src = theme === 'light'
+        ? 'assets/Matrix 2024 Balck.png'
+        : 'assets/Matrix 2024 White.png';
 }
 
 function applyLayout(layoutKey) {
@@ -2518,16 +2347,6 @@ function applyLayout(layoutKey) {
 
 function updateChartTheme() {
     var colors = getChartThemeColors();
-    var primaryCanvas = document.getElementById('testChartPrimary');
-    var secondaryCanvas = document.getElementById('testChartSecondary');
-    if (primaryCanvas) {
-        primaryCanvas.style.background = colors.background;
-        primaryCanvas.style.borderColor = colors.border;
-    }
-    if (secondaryCanvas) {
-        secondaryCanvas.style.background = colors.background;
-        secondaryCanvas.style.borderColor = colors.border;
-    }
     if (chartJsRef) {
         try {
             if (chartJsRef.data && chartJsRef.data.datasets && chartJsRef.data.datasets.length > 10) {
@@ -2723,6 +2542,9 @@ function handleJsonData(jsonData) {
             return;
         }
 
+        var heaterTempBigEl = document.getElementById('heaterTempBig');
+        if (heaterTempBigEl) heaterTempBigEl.textContent = temperature.toFixed(1);
+
         // In manual mode, sync incoming JSON power value to the manual slider UI.
         // IMPORTANT: We only update UI elements here and do not send commands back.
         if (currentControlMode === 'manual') {
@@ -2848,21 +2670,6 @@ function handleJsonData(jsonData) {
         
         // Index 16: Derivative (Dr) - for PID mode
         valuesArray13.push((typeof derivative === 'number' && !isNaN(derivative)) ? derivative : 0);
-        
-        // Update the heater temperature display tile if it exists
-        var heaterRightEl = document.getElementById('heaterRightTile');
-        if (heaterRightEl) {
-            var textSpan = heaterRightEl.querySelector('.tile-text');
-            if (textSpan) {
-                textSpan.textContent = 'Heater Temperature: ' + temperature.toFixed(2) + '°C';
-            } else {
-                heaterRightEl.textContent = 'Heater Temperature: ' + temperature.toFixed(2) + '°C';
-            }
-            // Update color based on temperature
-            var color = getTemperatureColor(temperature);
-            heaterRightEl.style.color = '#ffffff';
-            heaterRightEl.style.boxShadow = '0 0 10px ' + color + ', 0 0 20px ' + color;
-        }
         
         // Update connection status to show we're receiving data
         try {
@@ -3101,9 +2908,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var apiAvailable = ensureElectronAPI();
 
     addToLog('Process Control Temperature started');
-
-    // Initialize heater buttons with temperature display
-    updateHeaterButtons();
 
     if (!apiAvailable) {
         addToLog('Warning: electronAPI bridge not found. Running in limited mode.');
@@ -3558,12 +3362,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // Reset all control values when switching modes - UPDATE UI to match hardware state
-        
-        // Turn heater off in UI (update heater mode variable and buttons)
-        heaterMode = 0;
-        if (typeof updateHeaterButtons === 'function') {
-            updateHeaterButtons();
-        }
         
         // Set fan UI to 0 for all modes
         if (fanSpeedInput) {
@@ -4321,7 +4119,6 @@ document.addEventListener('DOMContentLoaded', function () {
     //
     // // Update temperature gauge periodically with current temperature - REMOVED (gauge removed from UI)
     // setInterval(function () {
-    //     var temp = heaterRightTemp || 0;
     //     if (temp > 0) {
     //         if (currentControlMode === 'manual') {
     //             drawTemperatureGauge(temp);
@@ -5327,32 +5124,11 @@ document.addEventListener('DOMContentLoaded', function () {
         chartContainer.title = 'Chart - Use legend to hide/show data series';
     }
 
-    // Add event listener for the dedicated "Open Graph" button
-    const openGraphBtn = document.getElementById('openGraphBtn');
-    if (openGraphBtn) {
-        openGraphBtn.addEventListener('click', function () {
-            // Check if window is already open
-            if (graphWindow && !graphWindow.closed) {
-                // Window is open - close it first
-                graphWindow.close();
-                graphWindow = null;
-                addToLog('Graph window closed.');
-                // Small delay before reopening to ensure it's fully closed
-                setTimeout(function () {
-                    openGraphWindow();
-                }, 100);
-            } else {
-                // Window is not open - just open it
-                openGraphWindow();
-            }
-        });
-    }
-
     // Add event listener for the "Print Graph" button (Time Chart)
     const printChartBtn = document.getElementById('printChartBtn');
     if (printChartBtn) {
         printChartBtn.addEventListener('click', function () {
-            printChart();
+            printBothCharts();
         });
     }
 
@@ -5886,8 +5662,17 @@ document.addEventListener('DOMContentLoaded', function () {
     // Apply saved theme/layout
     try {
         var savedLayout = localStorage.getItem('appLayout') || 'standard';
-        applyTheme('dark');
+        var savedTheme = localStorage.getItem('matrix-theme') || 'dark';
+        applyTheme(savedTheme);
         applyLayout(savedLayout);
+        var themeSel = document.getElementById('theme-select');
+        if (themeSel) {
+            themeSel.value = savedTheme;
+            themeSel.addEventListener('change', function () {
+                applyTheme(themeSel.value);
+                localStorage.setItem('matrix-theme', themeSel.value);
+            });
+        }
         var layoutSel = document.getElementById('layoutSelect');
         if (layoutSel) layoutSel.addEventListener('change', function () { applyLayout(layoutSel.value); localStorage.setItem('appLayout', layoutSel.value); });
     } catch (e) { /* ignore */ }
@@ -6242,85 +6027,6 @@ if (heaterTempInput && heaterTempValue) {
     updateHeaterIcon(heaterTempInput.value);
 }
 
-// Heater mode buttons - only one can be active at a time
-function updateHeaterButtons() {
-    addToLog('DEBUG: updateHeaterButtons called with heaterMode: ' + heaterMode);
-
-    // Remove active class from heater buttons only (cooler is independent)
-    if (heaterOffBtn) {
-        heaterOffBtn.classList.remove('active');
-        addToLog('DEBUG: Removed active class from heaterOffBtn');
-    }
-    if (heaterLeftBtn) {
-        heaterLeftBtn.classList.remove('active');
-        heaterLeftBtn.textContent = 'Radial Heater ' + heaterLeftTemp.toFixed(1) + '°C';
-        addToLog('DEBUG: Removed active class from heaterLeftBtn, set text: ' + heaterLeftBtn.textContent);
-    }
-    if (heaterRightBtn) {
-        heaterRightBtn.classList.remove('active');
-        heaterRightBtn.textContent = 'Linear Heater ' + heaterRightTemp.toFixed(1) + '°C';
-        addToLog('DEBUG: Removed active class from heaterRightBtn, set text: ' + heaterRightBtn.textContent);
-    }
-
-    // Add active class to current heater mode
-    if (heaterMode === 0 && heaterOffBtn) {
-        heaterOffBtn.classList.add('active');
-        addToLog('DEBUG: Added active class to heaterOffBtn (mode 0)');
-    } else if (heaterMode === 1 && heaterLeftBtn) {
-        heaterLeftBtn.classList.add('active');
-        addToLog('DEBUG: Added active class to heaterLeftBtn (mode 1)');
-    } else if (heaterMode === 2 && heaterRightBtn) {
-        heaterRightBtn.classList.add('active');
-        addToLog('DEBUG: Added active class to heaterRightBtn (mode 2)');
-    } else {
-        addToLog('DEBUG: No button was activated - heaterMode: ' + heaterMode + ', buttons found: off=' + !!heaterOffBtn + ', left=' + !!heaterLeftBtn + ', right=' + !!heaterRightBtn);
-    }
-}
-
-async function setHeaterMode(mode) {
-    markUserControlActivity();
-    heaterMode = mode;
-    updateHeaterButtons();
-    try {
-        var res = await window.electronAPI.setHeaterMode(heaterMode);
-        if (!res || !res.success) {
-            addToLog('Failed to set heater: ' + (res && res.error ? res.error : 'Unknown error'));
-        } else {
-            var modeText = mode === 0 ? 'Off' : (mode === 1 ? 'Left' : (mode === 2 ? 'Right' : 'Cooler'));
-            addToLog('Heater set to: ' + modeText);
-        }
-    } catch (e) {
-        addToLog('Error setting heater: ' + e.message);
-    }
-}
-
-if (heaterOffBtn) {
-    heaterOffBtn.addEventListener('click', function () {
-        setHeaterMode(0);
-    });
-}
-
-if (heaterLeftBtn) {
-    heaterLeftBtn.addEventListener('click', function () {
-        setHeaterMode(1);
-    });
-}
-
-if (heaterRightBtn) {
-    heaterRightBtn.addEventListener('click', function () {
-        setHeaterMode(2);
-    });
-}
-
-// Cooler button removed - functionality no longer available
-// if (coolerBtn) {
-//     coolerBtn.textContent = coolerEnabled ? 'Cooler Off' : 'Cooler On';
-//     coolerBtn.addEventListener('click', function() {
-//         var newState = !coolerEnabled;
-//         setCoolerMode(newState);
-//     });
-// }
-
 // Fan speed button functions
 async function setFanSpeed(speed) {
     markUserControlActivity();
@@ -6433,52 +6139,6 @@ async function openAdminPanel() {
         }
     }
 }
-
-function openGraphWindow() {
-    // Open graph in a new window with data sharing
-    graphWindow = window.open('chart.html', 'graphWindow', 'width=1000,height=700,scrollbars=yes,resizable=yes');
-
-    if (graphWindow) {
-        graphWindow.focus();
-        // Track when window is closed
-        var checkClosed = setInterval(function () {
-            if (graphWindow.closed) {
-                clearInterval(checkClosed);
-                graphWindow = null;
-            }
-        }, 500);
-
-        addToLog('Graph window opened');
-
-        // Wait for the window to load, then share data
-        graphWindow.addEventListener('load', function () {
-            setupGraphCommunication(graphWindow);
-        });
-    } else {
-        addToLog('Failed to open graph window - popup blocked?');
-    }
-}
-
-function setupGraphCommunication(windowRef) {
-    // Make chartData available to the graph window
-    if (windowRef) {
-        // Share the chart data object with current heater slider value
-        var currentHeaterValue = heaterTempInput ? parseInt(heaterTempInput.value, 10) : 20;
-        windowRef.chartData = chartData;
-        windowRef.currentHeaterValue = currentHeaterValue;
-
-        // Set up periodic data updates
-        setInterval(function () {
-            if (graphWindow && !graphWindow.closed) {
-                graphWindow.chartData = chartData;
-                // Update the current heater value from the slider
-                var currentHeaterValue = heaterTempInput ? parseInt(heaterTempInput.value, 10) : 20;
-                graphWindow.currentHeaterValue = currentHeaterValue;
-            }
-        }, 1000);
-    }
-}
-
 
 function setupAdminCommunication(adminWindow) {
     // Send initial data to admin panel

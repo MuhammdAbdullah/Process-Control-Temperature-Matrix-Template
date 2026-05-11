@@ -879,18 +879,6 @@ function processRxBuffer() {
       // Remove the 4-byte packet from buffer
       rxBuffer = rxBuffer.slice(4);
       continue;
-    }
-    // Check if this is a 4-byte cooler state packet
-    else if (rxBuffer[0] === 0x44 && rxBuffer[1] === 0x44 && rxBuffer[2] === 0x44) {
-      const coolerStatePacket = rxBuffer.slice(0, 4);
-      console.log('4-byte cooler state packet received:', coolerStatePacket.toString('hex'));
-
-      // Send to renderer
-      sendDataReceivedToAllWindows(coolerStatePacket);
-
-      // Remove the 4-byte packet from buffer
-      rxBuffer = rxBuffer.slice(4);
-      continue;
     } else {
       // Not a 4-byte packet, break to check for 56-byte packets
       break;

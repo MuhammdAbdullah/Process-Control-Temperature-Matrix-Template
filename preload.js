@@ -53,8 +53,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendHysteresis: (value) => ipcRenderer.invoke('send-hysteresis', value),
   // Heater controls
   sendHeaterTemp: (value) => ipcRenderer.invoke('send-heater-temp', value),
-  setHeaterMode: (mode) => ipcRenderer.invoke('set-heater-mode', mode),
-  
   // PID control
   sendPIDValue: (type, value) => ipcRenderer.invoke('send-pid-value', type, value),
   sendPIDFrequency: (value) => ipcRenderer.invoke('send-pid-frequency', value),

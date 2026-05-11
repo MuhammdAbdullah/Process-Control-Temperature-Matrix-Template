@@ -80,7 +80,7 @@ npm start          # run as Electron desktop app
 
 Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout:
 
-| Mode | Primary canvas | Secondary canvas |
+| Mode | Primary Canvas | Secondary Canvas |
 |------|---------------|-----------------|
 | Manual | Heater Temperature | Power % |
 | On/Off | Temp, Target, Hysteresis bands | Power % |
@@ -119,6 +119,7 @@ Commands sent to hardware:
 | `H` | `0 / 1` | Heater off / on |
 
 Incoming data arrives as two separate JSON messages per cycle:
+
 1. **Main data**: `{"T": 25.5, "P": 45.2, "F": 50}` — temperature, power, fan
 2. **PID data**: `{"Pr": 5.67, "It": 2.89, "Dr": 1.23, "Ot": 12.34}` — PID component values (PID mode only)
 
@@ -137,8 +138,8 @@ Incoming data arrives as two separate JSON messages per cycle:
 
 ### Safety & Reliability
 
-- **On connect**: hardware initialization sequence sent automatically
-- **On close / mode switch**: safe shutdown sequence — sets `C=1, F=0, P=0, T=20, H=0`, PID gains = 0
+- **On connect:** hardware initialization sequence sent automatically
+- **On close / mode switch:** safe shutdown sequence — sets `C=1, F=0, P=0, T=20, H=0`, PID gains = 0
 - 40 ms minimum command write interval to avoid serial flooding
 
 ---
@@ -180,6 +181,22 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 
 ---
 
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| [main.js](main.js) | Hardware I/O, IPC handlers, safety sequences, bootloader |
+| [preload.js](preload.js) | IPC bridge (context isolation) |
+| [renderer.js](renderer.js) | All UI logic (~6100 lines): control modes, charting, CSV export |
+| [layout.js](layout.js) | Clock, mode toggle, temperature display sync |
+| [server.js](server.js) | Express server for web/tablet deployment |
+| [admin.html](admin.html) | Admin panel: logs, raw data, bootloader, updates |
+| [index.html](index.html) | Main app UI |
+| [chart.html](chart.html) | Standalone chart/data page |
+| [assets/css/matrix-ui.css](assets/css/matrix-ui.css) | DaisyUI + Tailwind UI styles |
+
+---
+
 ## Tech Stack
 
 | Package | Version |
@@ -202,7 +219,7 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 - **Node.js:** 16+
 - **Hardware:** Compatible temperature control unit (Serial or USB HID)
 
-For native module builds on Windows, you may also need:
+For native module builds on Windows you may also need:
 - Python
 - Visual Studio Build Tools
 
@@ -251,14 +268,16 @@ For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 ### v0.1.2 (current)
 - UI migrated to DaisyUI + Tailwind CSS design system
 - Improved layout for desktop and tablet
+- Added `chart.html` standalone data page
+- Removed heavy 3D viewer dependencies (Three.js / OCCT libs) from build
 
 ### v0.0.3 (February 4, 2026)
-- Fixed chart shadow/fill rendering artifacts (clean line display)
+- Fixed chart shadow/fill rendering artifacts — clean line display
 - Improved chart cleanup and re-initialization on mode switch
 - Added stale-data skip after mode change
 - Dataset count validation for each mode and PID sub-type
 - Improved PID chart color visibility
-- Fixed target temperature input (updates on Enter/blur, not while typing)
+- Fixed target temperature input — updates on Enter/blur, not while typing
 - Fixed PID fan speed slider reference
 - Added system online/offline indicator in Admin Panel
 
@@ -271,7 +290,7 @@ For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 - Fixed critical missing X-axis labels (lines were disappearing)
 - Fixed On/Off chart update routing
 - 20-minute inactivity chart pause (sensor data and CSV logging unaffected)
-- Restored near-instant mode switch speed (removed heavy polling from switch path)
+- Restored near-instant mode switch speed
 
 ---
 

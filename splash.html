@@ -1,216 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Process Control Temperature App - Loading</title>
-    
-    <!-- Favicon -->
+
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="assets/android-chrome-192x192.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="assets/android-chrome-512x512.png">
     <link rel="manifest" href="assets/site.webmanifest">
-    
+    <link rel="stylesheet" href="assets/css/matrix-ui.css">
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
+        .fade-in-up { animation: fadeInUp 0.8s ease-out both; }
 
-        body {
-            background: #ffffff;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #333333;
-            overflow: hidden;
+        @keyframes logoPulse {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 4px 16px rgba(0,0,0,0.12)); }
+            50%       { transform: scale(1.06); filter: drop-shadow(0 6px 24px rgba(0,0,0,0.18)); }
         }
-
-        .splash-container {
-            text-align: center;
-            animation: fadeIn 1s ease-in-out;
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            gap: 40px;
-            padding: 0 60px;
-        }
-
-        .logo-section {
-            flex-shrink: 0;
-        }
-
-        .content-section {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .logo {
-            width: 200px;
-            height: 200px;
-            animation: pulse 2s ease-in-out infinite;
-            filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-            object-fit: contain;
-        }
-
-        .app-title {
-            font-size: 36px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            letter-spacing: 1px;
-            color: #2c3e50;
-        }
-
-        .app-subtitle {
-            font-size: 16px;
-            opacity: 0.8;
-            margin-bottom: 40px;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            color: #5a6c7d;
-        }
-
-        .loading-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .loading-text {
-            font-size: 12px;
-            opacity: 0.8;
-            animation: blink 1.5s ease-in-out infinite;
-            color: #5a6c7d;
-        }
-
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(102, 126, 234, 0.2);
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        .progress-bar {
-            width: 200px;
-            height: 4px;
-            background: rgba(102, 126, 234, 0.2);
-            border-radius: 2px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            border-radius: 2px;
-            animation: progress 2s ease-in-out;
-            box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.08);
-            }
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        @keyframes blink {
-            0%, 50% {
-                opacity: 0.8;
-            }
-            51%, 100% {
-                opacity: 0.4;
-            }
-        }
-
-        @keyframes progress {
-            0% {
-                width: 0%;
-            }
-            100% {
-                width: 100%;
-            }
-        }
-
-        .version-info {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            font-size: 10px;
-            opacity: 0.6;
-            color: #7f8c8d;
-        }
-
-        .matrix-branding {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            font-size: 10px;
-            opacity: 0.6;
-            color: #7f8c8d;
-        }
+        .logo-pulse { animation: logoPulse 2.4s ease-in-out infinite; }
     </style>
 </head>
-<body>
-    <div class="splash-container">
-        <div class="logo-section">
-            <img src="assets/logo.png" alt="Process Control Temperature App Logo" class="logo">
+<body class="min-h-screen bg-base-100 flex items-center justify-center overflow-hidden">
+
+    <div class="fade-in-up flex flex-row items-center gap-12 px-16 max-w-3xl">
+
+        <!-- Logo -->
+        <div class="flex-shrink-0">
+            <img src="assets/logo.png"
+                 alt="Process Control Temperature App Logo"
+                 class="logo-pulse w-48 h-48 object-contain">
         </div>
-        
-        <div class="content-section">
-            <div class="app-title">Process Control Temperature App</div>
-            
-            <div class="loading-container">
-                <div class="loading-spinner"></div>
-                <div class="loading-text">Initializing application...</div>
-                <div class="progress-bar">
-                    <div class="progress-fill"></div>
-                </div>
+
+        <!-- Content -->
+        <div class="flex flex-col items-center gap-5 flex-1">
+            <h1 class="text-3xl font-bold text-center leading-tight">
+                Process Control Temperature App
+            </h1>
+
+            <div class="flex flex-col items-center gap-3">
+                <span class="loading loading-spinner loading-lg text-primary"></span>
+                <p id="loadingText" class="text-sm opacity-70 animate-pulse">
+                    Initializing application...
+                </p>
+                <progress id="splashProgress"
+                          class="progress progress-primary w-56"
+                          value="0" max="100"></progress>
             </div>
         </div>
     </div>
 
-    <div class="matrix-branding">Matrix Technology Solutions</div>
-    <div class="version-info">v1.1.0</div>
+    <!-- Bottom branding -->
+    <div class="absolute bottom-4 left-4 text-xs opacity-40">Matrix Technology Solutions</div>
+    <div class="absolute bottom-4 right-4 text-xs opacity-40 font-mono">v1.1.0</div>
 
     <script>
-        // Add some dynamic loading text
         const loadingTexts = [
             'Initializing application...',
             'Loading interface...',
@@ -220,30 +69,35 @@
         ];
 
         let currentTextIndex = 0;
-        const loadingTextElement = document.querySelector('.loading-text');
+        const loadingTextEl = document.getElementById('loadingText');
+        const progressEl    = document.getElementById('splashProgress');
 
         function updateLoadingText() {
             if (currentTextIndex < loadingTexts.length) {
-                loadingTextElement.textContent = loadingTexts[currentTextIndex];
+                loadingTextEl.textContent = loadingTexts[currentTextIndex];
                 currentTextIndex++;
                 setTimeout(updateLoadingText, 400);
             }
         }
 
-        // Start the loading text animation
+        // Animate progress bar 0 → 100 over ~2 s
+        let progressValue = 0;
+        const progressInterval = setInterval(() => {
+            progressValue = Math.min(progressValue + 2, 100);
+            progressEl.value = progressValue;
+            if (progressValue >= 100) clearInterval(progressInterval);
+        }, 40);
+
         setTimeout(updateLoadingText, 500);
 
-        // Add some interactive effects
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add a subtle hover effect to the logo
-            const logo = document.querySelector('.logo');
-            logo.addEventListener('mouseenter', function() {
-                this.style.transform = 'scale(1.1)';
-                this.style.transition = 'transform 0.3s ease';
+        document.addEventListener('DOMContentLoaded', function () {
+            const logo = document.querySelector('.logo-pulse');
+            logo.addEventListener('mouseenter', () => {
+                logo.style.transform = 'scale(1.1)';
+                logo.style.transition = 'transform 0.3s ease';
             });
-            
-            logo.addEventListener('mouseleave', function() {
-                this.style.transform = 'scale(1)';
+            logo.addEventListener('mouseleave', () => {
+                logo.style.transform = '';
             });
         });
     </script>
