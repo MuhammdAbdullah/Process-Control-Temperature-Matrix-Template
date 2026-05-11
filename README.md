@@ -20,7 +20,7 @@ This app connects to a hardware temperature controller over Serial or USB HID an
 
 ## Screenshots
 
-![Process Control Temperature Dashboard](assets/readme-dashboard.png)
+![Process Control Temperature Dashboard](assets/PID%20app%20image.png)
 
 ---
 
