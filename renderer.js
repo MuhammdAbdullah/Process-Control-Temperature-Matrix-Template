@@ -35,7 +35,6 @@ var lastPidValues = {
     output: 0
 };
 
-var isPaused = false;
 var chartInactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
 var lastControlChangeAt = Date.now();
 var isChartPausedForInactivity = false;
@@ -1943,30 +1942,6 @@ function updateHeaterSliderFromHardware(temperature) {
     }
 }
 
-// Test function to simulate 4-byte heater temperature data
-function testHeaterTempData() {
-    addToLog('TEST: Simulating 4-byte heater temperature data...');
-
-    // Simulate [0x33, 0x33, 0x33, 30] for 30°C
-    var testData = [0x33, 0x33, 0x33, 30];
-    addToLog('TEST: Sending test data: ' + testData.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-    handleIncomingData(testData);
-
-    setTimeout(() => {
-        // Simulate [0x33, 0x33, 0x33, 50] for 50°C
-        var testData2 = [0x33, 0x33, 0x33, 50];
-        addToLog('TEST: Sending test data: ' + testData2.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData2);
-    }, 2000);
-
-    setTimeout(() => {
-        // Simulate [0x33, 0x33, 0x33, 25] for 25°C
-        var testData3 = [0x33, 0x33, 0x33, 25];
-        addToLog('TEST: Sending test data: ' + testData3.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        handleIncomingData(testData3);
-    }, 4000);
-}
-
 function addRawData(data) {
     if (!data || data.length === 0) return;
 
@@ -3141,11 +3116,6 @@ document.addEventListener('DOMContentLoaded', function () {
         onoffHysteresisValue = 3;
     }
     var onoffHysteresis = document.getElementById('onoffHysteresis');
-    // var onoffGaugeCtx = null;
-    // var onoffGaugeTemperature = document.getElementById('onoffGaugeTemperature');
-    // if (onoffGaugeCanvas) {
-    //     onoffGaugeCtx = onoffGaugeCanvas.getContext('2d');
-    // }
 
     // PID mode elements - Target Temperature control (same as On/Off)
     var pidTargetSlider = document.getElementById('pidTargetSlider');
@@ -3164,11 +3134,6 @@ document.addEventListener('DOMContentLoaded', function () {
     var pidFanOffBtn = document.getElementById('pidFanOff');
     var pidFan50Btn = document.getElementById('pidFan50');
     var pidFan100Btn = document.getElementById('pidFan100');
-    // var pidGaugeCtx = null;
-    // var pidGaugeTemperature = document.getElementById('pidGaugeTemperature');
-    // if (pidGaugeCanvas) {
-    //     pidGaugeCtx = pidGaugeCanvas.getContext('2d');
-    // }
 
     // PID Control Type and Parameter inputs
     var pidControlType = document.getElementById('pidControlType');
@@ -3719,83 +3684,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var power50Btn = document.getElementById('power50');
     var power100Btn = document.getElementById('power100');
 
-    // var gaugeTemperature = document.getElementById('gaugeTemperature');
-    // var gaugeCtx = null;
-    // if (gaugeCanvas) {
-    //     gaugeCtx = gaugeCanvas.getContext('2d');
-    // }
-
     // Function to map power percentage (0-100%) to heater temperature (20-70°C)
     function powerToHeaterTemp(powerPercent) {
         // Linear mapping: 0% = 20°C, 100% = 70°C
         return Math.round(20 + (powerPercent / 100) * (70 - 20));
     }
-
-    // Function to draw temperature gauge
-    //     if (!gaugeCtx || !gaugeCanvas) return;
-    //
-    //     // Ensure canvas has correct dimensions
-    //     if (gaugeCanvas.width !== 180 || gaugeCanvas.height !== 180) {
-    //         gaugeCanvas.width = 180;
-    //         gaugeCanvas.height = 180;
-    //     }
-    //
-    //     var centerX = gaugeCanvas.width / 2;
-    //     var centerY = gaugeCanvas.height / 2;
-    //     var radius = 75;
-    //     var startAngle = -Math.PI; // Start at -180 degrees (left)
-    //     var endAngle = 0; // End at 0 degrees (right)
-    //
-    //     // Clear canvas
-    //     gaugeCtx.clearRect(0, 0, gaugeCanvas.width, gaugeCanvas.height);
-    //
-    //     // Draw background arc (dark grey track - visible but subtle)
-    //     gaugeCtx.beginPath();
-    //     gaugeCtx.arc(centerX, centerY, radius, startAngle, endAngle);
-    //     gaugeCtx.lineWidth = 18;
-    //     gaugeCtx.strokeStyle = '#3a3f4a'; // Dark grey background - lighter for visibility
-    //     gaugeCtx.stroke();
-    //
-    //     // Calculate angle for current temperature (0-100°C maps to -180 to 0 degrees)
-    //     var tempPercent = Math.max(0, Math.min(100, temperature)) / 100;
-    //     var currentAngle = startAngle + (endAngle - startAngle) * tempPercent;
-    //
-    //     // Create horizontal gradient for foreground arc (Orange to Red-Orange)
-    //     var gradient = gaugeCtx.createLinearGradient(
-    //         centerX - radius, centerY,
-    //         centerX + radius, centerY
-    //     );
-    //     gradient.addColorStop(0, '#FF9900'); // Orange
-    //     gradient.addColorStop(1, '#FF4500'); // Red-Orange
-    //
-    //     // Draw temperature arc with gradient
-    //     gaugeCtx.beginPath();
-    //     gaugeCtx.arc(centerX, centerY, radius, startAngle, currentAngle);
-    //     gaugeCtx.lineWidth = 18;
-    //     gaugeCtx.strokeStyle = gradient;
-    //
-    //     // Add glowing heater element effect
-    //     gaugeCtx.shadowBlur = 12; // 10-15px blur radius
-    //     gaugeCtx.shadowColor = '#FF4500'; // Red-Orange glow color
-    //     gaugeCtx.stroke();
-    //
-    //     // Reset shadow for other drawings
-    //     gaugeCtx.shadowBlur = 0;
-    //     gaugeCtx.shadowColor = 'transparent';
-    //
-    //     // Update temperature text - large bold number
-    //     if (gaugeTemperature) {
-    //         gaugeTemperature.textContent = temperature.toFixed(1);
-    //         gaugeTemperature.style.color = '#E0E6ED'; // Use primary text color
-    //         gaugeTemperature.style.fontSize = '3rem';
-    //         gaugeTemperature.style.fontWeight = '700';
-    //         gaugeTemperature.style.fontFamily = "'Inter', sans-serif";
-    //         gaugeTemperature.style.lineHeight = '1';
-    //     }
-    // }
-    //
-    // // Initialize gauge with 0°C
-    // drawTemperatureGauge(0);
 
     // Function to update power slider fill
     function updatePowerSliderFill(powerPercent) {
@@ -3989,148 +3882,6 @@ document.addEventListener('DOMContentLoaded', function () {
             setPower(100);
         });
     }
-
-    // Function to draw On/Off temperature gauge - REMOVED (gauge removed from UI)
-    // function drawOnOffTemperatureGauge(temperature) {
-    //     if (!onoffGaugeCtx || !onoffGaugeCanvas) return;
-    //
-    //     // Ensure canvas has correct dimensions
-    //     if (onoffGaugeCanvas.width !== 180 || onoffGaugeCanvas.height !== 180) {
-    //         onoffGaugeCanvas.width = 180;
-    //         onoffGaugeCanvas.height = 180;
-    //     }
-    //
-    //     var centerX = onoffGaugeCanvas.width / 2;
-    //     var centerY = onoffGaugeCanvas.height / 2;
-    //     var radius = 75;
-    //     var startAngle = -Math.PI;
-    //     var endAngle = 0;
-    //
-    //     onoffGaugeCtx.clearRect(0, 0, onoffGaugeCanvas.width, onoffGaugeCanvas.height);
-    //
-    //     // Draw background arc (dark grey track - visible but subtle)
-    //     onoffGaugeCtx.beginPath();
-    //     onoffGaugeCtx.arc(centerX, centerY, radius, startAngle, endAngle);
-    //     onoffGaugeCtx.lineWidth = 18;
-    //     onoffGaugeCtx.strokeStyle = '#3a3f4a'; // Dark grey background - lighter for visibility
-    //     onoffGaugeCtx.stroke();
-    //
-    //     var tempPercent = Math.max(0, Math.min(100, temperature)) / 100;
-    //     var currentAngle = startAngle + (endAngle - startAngle) * tempPercent;
-    //
-    //     // Create horizontal gradient for foreground arc (Orange to Red-Orange)
-    //     var gradient = onoffGaugeCtx.createLinearGradient(
-    //         centerX - radius, centerY,
-    //         centerX + radius, centerY
-    //     );
-    //     gradient.addColorStop(0, '#FF9900'); // Orange
-    //     gradient.addColorStop(1, '#FF4500'); // Red-Orange
-    //
-    //     // Draw temperature arc with gradient
-    //     onoffGaugeCtx.beginPath();
-    //     onoffGaugeCtx.arc(centerX, centerY, radius, startAngle, currentAngle);
-    //     onoffGaugeCtx.lineWidth = 18;
-    //     onoffGaugeCtx.strokeStyle = gradient;
-    //
-    //     // Add glowing heater element effect
-    //     onoffGaugeCtx.shadowBlur = 12; // 10-15px blur radius
-    //     onoffGaugeCtx.shadowColor = '#FF4500'; // Red-Orange glow color
-    //     onoffGaugeCtx.stroke();
-    //
-    //     // Reset shadow
-    //     onoffGaugeCtx.shadowBlur = 0;
-    //     onoffGaugeCtx.shadowColor = 'transparent';
-    //
-    //     // Update temperature text - large bold number
-    //     if (onoffGaugeTemperature) {
-    //         onoffGaugeTemperature.textContent = temperature.toFixed(1);
-    //         onoffGaugeTemperature.style.color = '#E0E6ED'; // Use primary text color
-    //         onoffGaugeTemperature.style.fontSize = '3rem';
-    //         onoffGaugeTemperature.style.fontWeight = '700';
-    //         onoffGaugeTemperature.style.fontFamily = "'Inter', sans-serif";
-    //         onoffGaugeTemperature.style.lineHeight = '1';
-    //     }
-    // }
-
-    // Function to draw PID temperature gauge - REMOVED (gauge removed from UI)
-    // function drawPidTemperatureGauge(temperature) {
-    //     if (!pidGaugeCtx || !pidGaugeCanvas) return;
-    //
-    //     if (pidGaugeCanvas.width !== 180 || pidGaugeCanvas.height !== 180) {
-    //         pidGaugeCanvas.width = 180;
-    //         pidGaugeCanvas.height = 180;
-    //     }
-    //
-    //     var centerX = pidGaugeCanvas.width / 2;
-    //     var centerY = pidGaugeCanvas.height / 2;
-    //     var radius = 75;
-    //     var startAngle = -Math.PI;
-    //     var endAngle = 0;
-    //
-    //     pidGaugeCtx.clearRect(0, 0, pidGaugeCanvas.width, pidGaugeCanvas.height);
-    //
-    //     // Draw background arc (dark grey track - visible but subtle)
-    //     pidGaugeCtx.beginPath();
-    //     pidGaugeCtx.arc(centerX, centerY, radius, startAngle, endAngle);
-    //     pidGaugeCtx.lineWidth = 18;
-    //     pidGaugeCtx.strokeStyle = '#3a3f4a'; // Dark grey background - lighter for visibility
-    //     pidGaugeCtx.stroke();
-    //
-    //     var tempPercent = Math.max(0, Math.min(100, temperature)) / 100;
-    //     var currentAngle = startAngle + (endAngle - startAngle) * tempPercent;
-    //
-    //     // Create horizontal gradient for foreground arc (Orange to Red-Orange)
-    //     var gradient = pidGaugeCtx.createLinearGradient(
-    //         centerX - radius, centerY,
-    //         centerX + radius, centerY
-    //     );
-    //     gradient.addColorStop(0, '#FF9900'); // Orange
-    //     gradient.addColorStop(1, '#FF4500'); // Red-Orange
-    //
-    //     // Draw temperature arc with gradient
-    //     pidGaugeCtx.beginPath();
-    //     pidGaugeCtx.arc(centerX, centerY, radius, startAngle, currentAngle);
-    //     pidGaugeCtx.lineWidth = 18;
-    //     pidGaugeCtx.strokeStyle = gradient;
-    //
-    //     // Add glowing heater element effect
-    //     pidGaugeCtx.shadowBlur = 12; // 10-15px blur radius
-    //     pidGaugeCtx.shadowColor = '#FF4500'; // Red-Orange glow color
-    //     pidGaugeCtx.stroke();
-    //
-    //     // Reset shadow
-    //     pidGaugeCtx.shadowBlur = 0;
-    //     pidGaugeCtx.shadowColor = 'transparent';
-    //
-    //     // Update temperature text - large bold number
-    //     if (pidGaugeTemperature) {
-    //         pidGaugeTemperature.textContent = temperature.toFixed(1);
-    //         pidGaugeTemperature.style.color = '#E0E6ED'; // Use primary text color
-    //         pidGaugeTemperature.style.fontSize = '3rem';
-    //         pidGaugeTemperature.style.fontWeight = '700';
-    //         pidGaugeTemperature.style.fontFamily = "'Inter', sans-serif";
-    //         pidGaugeTemperature.style.lineHeight = '1';
-    //     }
-    // }
-    //
-    // // Initialize gauges - REMOVED (gauge removed from UI)
-    // drawOnOffTemperatureGauge(0);
-    // drawPidTemperatureGauge(0);
-    //
-    // // Update temperature gauge periodically with current temperature - REMOVED (gauge removed from UI)
-    // setInterval(function () {
-    //     if (temp > 0) {
-    //         if (currentControlMode === 'manual') {
-    //             drawTemperatureGauge(temp);
-    //         } else if (currentControlMode === 'onoff') {
-    //             drawOnOffTemperatureGauge(temp);
-    //         } else if (currentControlMode === 'pid') {
-    //             drawPidTemperatureGauge(temp);
-    //         }
-    //     }
-    // }, 500); // Update every 500ms
-
-    // Update graph loop removed
 
     // ============================================================================
     // ON/OFF MODE: TARGET TEMPERATURE CONTROL
@@ -4740,29 +4491,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // PID MODE: POWER CONTROL AND FAN CONTROL
     // ============================================================================
 
-    // Function to update PID power slider fill
-    function updatePidPowerSliderFill(powerPercent) {
-        if (false && pidPowerSliderFill) {
-            // pidPowerSliderFill.style.setProperty('--fill-percent', powerPercent + '%');
-            // pidPowerSliderFill.style.width = powerPercent + '%';
-        }
-        // Update tooltip position
-        if (pidPowerTooltip && pidPowerSlider) {
-            // var rect = // pidPowerSlider.getBoundingClientRect();
-            // var percentage = powerPercent / 100;
-            // var leftPos = percentage * rect.width;
-            // pidPowerTooltip.style.left = leftPos + 'px';
-            // pidPowerTooltip.style.transform = 'translateX(-50%)';
-        }
-    }
-
     // Function to set PID power
     async function setPidPower(powerPercent) {
         powerPercent = Math.max(0, Math.min(100, powerPercent));
-
-        if (false && pidPowerSlider) // pidPowerSlider.value = powerPercent;
-            if (false && pidPowerDisplay) // pidPowerDisplay.value = powerPercent;
-                updatePidPowerSliderFill(powerPercent);
 
         var heaterTemp = powerToHeaterTemp(powerPercent);
 
@@ -4784,86 +4515,6 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (error) {
             addToLog('Error setting PID power: ' + error.message);
         }
-    }
-
-    // PID Power slider event handlers
-    if (false && pidPowerSlider) {
-        // pidPowerSlider.addEventListener('input', function() {
-        // var power = parseInt(// pidPowerSlider.value, 10);
-        if (false && pidPowerDisplay) // pidPowerDisplay.value = power;
-            updatePidPowerSliderFill(power);
-        if (false && pidPowerTooltip) {
-            // pidPowerTooltip.textContent = power + '%';
-        }
-        // });
-
-        // pidPowerSlider.addEventListener('change', function() {
-        // var power = parseInt(// pidPowerSlider.value, 10);
-        setPidPower(power);
-        // });
-
-        // pidPowerSlider.addEventListener('mousemove', function(e) {
-        if (false && pidPowerTooltip) {
-            // var rect = // pidPowerSlider.getBoundingClientRect();
-            var power = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-            power = Math.max(0, Math.min(100, power));
-            // pidPowerTooltip.textContent = power + '%';
-        }
-        // });
-    }
-
-    if (false && pidPowerDisplay) {
-        // pidPowerDisplay.addEventListener('blur', function() {
-        // var power = parseInt(// pidPowerDisplay.value, 10);
-        if (isNaN(power)) {
-            if (false && pidPowerSlider) {
-                // pidPowerDisplay.value = parseInt(// pidPowerSlider.value, 10);
-            }
-        } else {
-            power = Math.max(0, Math.min(100, power));
-            // pidPowerDisplay.value = power;
-            if (false && pidPowerSlider) {
-                // pidPowerSlider.value = power;
-                updatePidPowerSliderFill(power);
-            }
-            setPidPower(power);
-        }
-        // });
-
-        // pidPowerDisplay.addEventListener('keydown', function(event) {
-        if (event.key === 'Enter' || event.keyCode === 13) {
-            event.preventDefault();
-            // pidPowerDisplay.blur();
-        }
-        // });
-    }
-
-    // PID Power preset buttons
-    if (false && pidPowerOffBtn) {
-        // pidPowerOffBtn.addEventListener('click', function() {
-        // pidPowerOffBtn.classList.add('active');
-        if (false && pidPower50Btn) // pidPower50Btn.classList.remove('active');
-            if (false && pidPower100Btn) // pidPower100Btn.classList.remove('active');
-                setPidPower(0);
-        // });
-    }
-
-    if (false && pidPower50Btn) {
-        // pidPower50Btn.addEventListener('click', function() {
-        // pidPower50Btn.classList.add('active');
-        if (false && pidPowerOffBtn) // pidPowerOffBtn.classList.remove('active');
-            if (false && pidPower100Btn) // pidPower100Btn.classList.remove('active');
-                setPidPower(50);
-        // });
-    }
-
-    if (false && pidPower100Btn) {
-        // pidPower100Btn.addEventListener('click', function() {
-        // pidPower100Btn.classList.add('active');
-        if (false && pidPowerOffBtn) // pidPowerOffBtn.classList.remove('active');
-            if (false && pidPower50Btn) // pidPower50Btn.classList.remove('active');
-                setPidPower(100);
-        // });
     }
 
     // PID Fan control - similar to On/Off fan control

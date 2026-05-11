@@ -2,7 +2,7 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.2` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.3` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
@@ -192,7 +192,6 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 | [server.js](server.js) | Express server for web/tablet deployment |
 | [admin.html](admin.html) | Admin panel: logs, raw data, bootloader, updates |
 | [index.html](index.html) | Main app UI |
-| [chart.html](chart.html) | Standalone chart/data page |
 | [assets/css/matrix-ui.css](assets/css/matrix-ui.css) | DaisyUI + Tailwind UI styles |
 
 ---
@@ -208,8 +207,6 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 | `express` | `^4.21.2` |
 | `serialport` | `^12.0.0` |
 | `node-hid` | `^3.1.1` |
-| `three` | `^0.181.1` |
-| `occt-import-js` | `^0.0.23` |
 
 ---
 
@@ -265,11 +262,16 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.2 (current)
+### v0.1.3 (current)
+- Project cleanup: removed orphaned files (`chart.html`, `renderer-web.js`, backup HTMLs, `inject_slider_css.js`, `chart-page.js`)
+- Removed unused vendored 3D libs from `assets/libs/` (Three.js, OCCT, GLTFLoader, OrbitControls — ~7.5 MB)
+- Removed unused npm packages (`occt-import-js`, `three`, `jimp`, `to-ico`) — 70 packages pruned
+- Fixed `package.json` build file list (removed 9 non-existent file references; added missing `layout.js`)
+
+### v0.1.2
 - UI migrated to DaisyUI + Tailwind CSS design system
 - Improved layout for desktop and tablet
-- Added `chart.html` standalone data page
-- Removed heavy 3D viewer dependencies (Three.js / OCCT libs) from build
+- Removed heavy 3D viewer from codebase
 
 ### v0.0.3 (February 4, 2026)
 - Fixed chart shadow/fill rendering artifacts — clean line display
