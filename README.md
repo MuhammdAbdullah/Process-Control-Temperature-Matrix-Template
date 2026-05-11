@@ -262,6 +262,12 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
+### Unreleased (latest)
+- Fixed print chart function to correctly export **both** primary and secondary canvases on separate pages
+- Removed dead fallback/initialization code in `printBothCharts`; function now always uses `chartJsRef` + `window.liveChartRef`
+- Print now waits for both images to fully load before triggering the browser print dialog
+- Cleaned up print CSS: uses modern `break-after: page` alongside legacy `page-break-after`
+
 ### v0.1.3 (current)
 - Project cleanup: removed orphaned files (`chart.html`, `renderer-web.js`, backup HTMLs, `inject_slider_css.js`, `chart-page.js`)
 - Removed unused vendored 3D libs from `assets/libs/` (Three.js, OCCT, GLTFLoader, OrbitControls — ~7.5 MB)

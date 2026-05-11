@@ -5083,214 +5083,110 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to print both charts together on separate pages
     function printBothCharts() {
-        // Try to initialize time chart if it doesn't exist
-        if (!window.liveChartRef) {
-            try {
-                var testCanvas = document.getElementById('testChartPrimary');
-                if (testCanvas && window.Chart) {
-                    var ctx = testCanvas.getContext('2d');
-                    var themeColors = getChartThemeColors();
-                    testCanvas.style.background = themeColors.background;
-                    testCanvas.style.borderColor = themeColors.border;
-                    var colors = ['#ff4d4f', '#40a9ff', '#73d13d', '#fa8c16', '#b37feb', '#36cfc9', '#f759ab', '#9254de', '#faad14', '#1f7a8c', '#ff0000', '#ff007a'];
-                    var labels = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'Radial Heater', 'Linear Heater', 'Power', 'Target'];
-                    var ds = [];
-                    for (var i = 0; i < 12; i++) {
-                        ds.push({ label: labels[i], data: [], borderColor: colors[i], backgroundColor: colors[i], pointRadius: 0, borderWidth: 2, tension: 0.2, yAxisID: i === 10 ? 'y2' : 'y' });
-                    }
-                    window.liveChartRef = new Chart(ctx, {
-                        type: 'line',
-                        data: { labels: [], datasets: ds },
-                        options: {
-                            responsive: true,
-                            animation: false,
-                            interaction: { mode: 'nearest', intersect: false },
-                            plugins: { legend: { position: 'right', labels: { color: themeColors.text } } },
-                            scales: {
-                                x: {
-                                    grid: { color: themeColors.grid },
-                                    ticks: { 
-                                        color: themeColors.text,
-                                        autoSkip: true,          // automatically skip labels
-                                        maxTicksLimit: 10        // show at most 10 time labels
-                                    }
-                                },
-                                y: {
-                                    type: 'linear',
-                                    position: 'left',
-                                    title: { display: true, text: 'Temperature (°C)', color: themeColors.text },
-                                    grid: { color: themeColors.grid },
-                                    ticks: { 
-                                        color: themeColors.text,
-                                        callback: function(value) {
-                                            return Math.round(value) + '°C';
-                                        }
-                                    }
-                                },
-                                y2: {
-                                    type: 'linear',
-                                    position: 'right',
-                                    grid: { drawOnChartArea: false, color: themeColors.grid },
-                                    title: { display: true, text: 'Power (W)', color: themeColors.text },
-                                    ticks: { 
-                                        color: themeColors.text,
-                                        callback: function(value) {
-                                            return Math.round(value);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-            } catch (e) {
-                console.error('Error initializing time chart:', e);
-            }
-        }
+        var primaryChart = chartJsRef;
+        var secondaryChart = window.liveChartRef;
 
-        // Check if chart exists
-        if (!window.liveChartRef) {
-            alert('Chart is not initialized yet. Please wait for the chart to load.');
+        if (!primaryChart || !primaryChart.canvas) {
+            alert('Primary chart is not initialized yet. Please wait for the chart to load.');
+            return;
+        }
+        if (!secondaryChart || !secondaryChart.canvas) {
+            alert('Secondary chart is not initialized yet. Please wait for the chart to load.');
             return;
         }
 
-        var timeChart = window.liveChartRef;
-        var timeCanvas = null;
-
-        // Check if chart has data
-        var timeHasData = false;
-
-        // Check time chart data (try liveChartRef first, then chartJsRef as fallback)
-        var chartToCheck = timeChart;
-        if (!chartToCheck && chartJsRef) {
-            chartToCheck = chartJsRef;
-        }
-
-        if (chartToCheck && chartToCheck.data && chartToCheck.data.datasets) {
-            for (var i = 0; i < chartToCheck.data.datasets.length; i++) {
-                if (chartToCheck.data.datasets[i].data && chartToCheck.data.datasets[i].data.length > 0) {
-                    timeHasData = true;
+        // Verify at least one dataset has data
+        var hasData = false;
+        if (primaryChart.data && primaryChart.data.datasets) {
+            for (var i = 0; i < primaryChart.data.datasets.length; i++) {
+                if (primaryChart.data.datasets[i].data && primaryChart.data.datasets[i].data.length > 0) {
+                    hasData = true;
                     break;
                 }
             }
         }
-
-        // If chart has no data, show error message
-        if (!timeHasData) {
+        if (!hasData) {
             alert('Chart has no data to print! Please make sure data is being received.');
             return;
         }
 
-        // Get canvas from chart instance and prepare for printing
-        var timeOriginalColors = null;
+        // Prepare both charts for print (invert colors to black for visibility)
+        var primaryOriginalColors = prepareChartForPrint(primaryChart);
+        primaryChart.update('none');
+        var secondaryOriginalColors = prepareChartForPrint(secondaryChart);
+        secondaryChart.update('none');
 
-        if (timeChart && timeChart.canvas) {
-            timeCanvas = timeChart.canvas;
-            timeOriginalColors = prepareChartForPrint(timeChart);
-            timeChart.resize();
-            timeChart.update('none');
-        } else if (chartJsRef && chartJsRef.canvas) {
-            // Fallback to chartJsRef
-            timeChart = chartJsRef;
-            timeCanvas = chartJsRef.canvas;
-            timeOriginalColors = prepareChartForPrint(timeChart);
-            timeChart.resize();
-            timeChart.update('none');
-        }
-
-        if (!timeCanvas) {
-            alert('Chart canvas not found!');
-            return;
-        }
-
-        // Wait for charts to fully render, then convert canvases to images
         setTimeout(function () {
             try {
-                var timeImageData = null;
+                var primaryCanvas = primaryChart.canvas;
+                var secondaryCanvas = secondaryChart.canvas;
 
-                // Export time chart
-                if (timeCanvas && timeCanvas.width > 0 && timeCanvas.height > 0) {
-                    timeImageData = timeCanvas.toDataURL('image/png', 1.0);
-                    if (!timeImageData || timeImageData === 'data:,' || timeImageData.length < 100) {
-                        timeImageData = null;
-                    } else {
-                        // Restore original colors after export
-                        if (timeChart && timeOriginalColors) {
-                            restoreChartColors(timeChart, timeOriginalColors);
-                            timeChart.update('none');
-                        }
-                    }
+                var primaryImageData = (primaryCanvas && primaryCanvas.width > 0 && primaryCanvas.height > 0)
+                    ? primaryCanvas.toDataURL('image/png', 1.0) : null;
+                var secondaryImageData = (secondaryCanvas && secondaryCanvas.width > 0 && secondaryCanvas.height > 0)
+                    ? secondaryCanvas.toDataURL('image/png', 1.0) : null;
+
+                // Restore chart colors immediately after capture
+                if (primaryOriginalColors) { restoreChartColors(primaryChart, primaryOriginalColors); primaryChart.update('none'); }
+                if (secondaryOriginalColors) { restoreChartColors(secondaryChart, secondaryOriginalColors); secondaryChart.update('none'); }
+
+                if (!primaryImageData || primaryImageData.length < 100) {
+                    alert('Could not capture primary chart image.');
+                    return;
                 }
-
-                if (!timeImageData) {
-                    alert('Chart has no data to print! Please make sure the chart has data points.');
+                if (!secondaryImageData || secondaryImageData.length < 100) {
+                    alert('Could not capture secondary chart image.');
                     return;
                 }
 
-                // Print directly using hidden iframe - completely invisible
                 var iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.left = '-9999px';
-                iframe.style.top = '-9999px';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = 'none';
-                iframe.style.visibility = 'hidden';
-                iframe.style.display = 'none';
+                iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:0;height:0;border:none;visibility:hidden;display:none;';
                 document.body.appendChild(iframe);
 
                 var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
                 iframeDoc.open();
-                iframeDoc.write('<!DOCTYPE html><html><head><title>Print Both Charts</title>');
+                iframeDoc.write('<!DOCTYPE html><html><head><title>Print Charts</title>');
                 iframeDoc.write('<meta http-equiv="Content-Security-Policy" content="img-src data: \'self\'; style-src \'self\' \'unsafe-inline\'; script-src \'self\' \'unsafe-inline\'; default-src \'self\' data:;">');
                 iframeDoc.write('<style>');
-                iframeDoc.write('body { margin: 0; padding: 20px; font-family: Arial, sans-serif; background: white; }');
-                iframeDoc.write('.chart-page { width: 100%; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; page-break-after: always; page-break-inside: avoid; background: white; }');
-                iframeDoc.write('.chart-page:last-child { page-break-after: auto; }');
-                iframeDoc.write('img { max-width: 90%; height: auto; display: block; margin: 20px auto; }');
-                iframeDoc.write('h2 { color: #333; margin: 20px 0; }');
+                iframeDoc.write('* { box-sizing: border-box; }');
+                iframeDoc.write('body { margin: 0; padding: 0; background: white; font-family: Arial, sans-serif; }');
+                iframeDoc.write('.chart-page { width: 100%; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; background: white; break-after: page; page-break-after: always; page-break-inside: avoid; }');
+                iframeDoc.write('.chart-page.last { break-after: auto; page-break-after: auto; }');
+                iframeDoc.write('h2 { color: #333; margin: 0 0 16px 0; font-size: 16px; text-align: center; }');
+                iframeDoc.write('img { max-width: 95%; height: auto; display: block; margin: 0 auto; }');
                 iframeDoc.write('@media print {');
-                iframeDoc.write('  body { margin: 0; padding: 0; background: white !important; }');
-                iframeDoc.write('  .chart-page { page-break-after: always; page-break-inside: avoid; background: white !important; }');
-                iframeDoc.write('  .chart-page:last-child { page-break-after: auto; }');
+                iframeDoc.write('  body { background: white !important; }');
+                iframeDoc.write('  .chart-page { background: white !important; break-after: page; page-break-after: always; page-break-inside: avoid; }');
+                iframeDoc.write('  .chart-page.last { break-after: auto; page-break-after: auto; }');
                 iframeDoc.write('}');
-                iframeDoc.write('</style>');
-                iframeDoc.write('</head><body>');
+                iframeDoc.write('</style></head><body>');
 
-                // Chart - Temperature vs Time
-                if (timeImageData) {
-                    iframeDoc.write('<div class="chart-page">');
-                    iframeDoc.write('<h2>Device Data Chart - Temperature vs Time</h2>');
-                    iframeDoc.write('<img src="' + timeImageData + '" id="img1" />');
-                    iframeDoc.write('</div>');
-                }
+                iframeDoc.write('<div class="chart-page">');
+                iframeDoc.write('<h2>Device Data Chart — Temperature vs Time</h2>');
+                iframeDoc.write('<img id="img1" src="' + primaryImageData + '" />');
+                iframeDoc.write('</div>');
+
+                iframeDoc.write('<div class="chart-page last">');
+                iframeDoc.write('<h2>Multi-Variable Analysis</h2>');
+                iframeDoc.write('<img id="img2" src="' + secondaryImageData + '" />');
+                iframeDoc.write('</div>');
 
                 iframeDoc.write('<script>');
-                iframeDoc.write('window.onload = function() {');
-                iframeDoc.write('  var img1 = document.getElementById("img1");');
-                iframeDoc.write('  if (img1) {');
-                iframeDoc.write('    img1.onload = function() {');
-                iframeDoc.write('      window.focus();');
-                iframeDoc.write('      setTimeout(function(){ window.print(); }, 200);');
-                iframeDoc.write('    };');
-                iframeDoc.write('    if (img1.complete) {');
-                iframeDoc.write('      window.focus();');
-                iframeDoc.write('      setTimeout(function(){ window.print(); }, 200);');
-                iframeDoc.write('    }');
-                iframeDoc.write('  }');
-                iframeDoc.write('};');
-                iframeDoc.write('</script>');
+                iframeDoc.write('var loaded = 0;');
+                iframeDoc.write('function tryPrint() { if (++loaded >= 2) { window.focus(); setTimeout(function(){ window.print(); }, 200); } }');
+                iframeDoc.write('var img1 = document.getElementById("img1");');
+                iframeDoc.write('var img2 = document.getElementById("img2");');
+                iframeDoc.write('img1.onload = tryPrint;');
+                iframeDoc.write('img2.onload = tryPrint;');
+                iframeDoc.write('if (img1.complete) tryPrint();');
+                iframeDoc.write('if (img2.complete) tryPrint();');
+                iframeDoc.write('<\/script>');
                 iframeDoc.write('</body></html>');
                 iframeDoc.close();
 
-                iframe.onload = function () {
-                    setTimeout(function () {
-                        iframe.contentWindow.focus();
-                        setTimeout(function () {
-                            document.body.removeChild(iframe);
-                        }, 1000);
-                    }, 200);
-                };
+                setTimeout(function () {
+                    document.body.removeChild(iframe);
+                }, 3000);
             } catch (error) {
                 alert('Error printing charts: ' + error.message);
                 console.error('Print error:', error);
