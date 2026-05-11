@@ -1,280 +1,280 @@
 # Process Control Temperature App
 
-Desktop + web app for controlling and monitoring a temperature process system using Serial/USB communication.
+> Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-Current app version: `0.1.2`
+**Version:** `0.1.2` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
-## What This App Does
+## Overview
 
-- Connects to hardware over Serial COM port or USB HID.
-- Sends control commands (power, fan, target temperature, PID values).
-- Receives live JSON data from hardware and updates the UI.
-- Shows real-time charts for Manual, On/Off, and PID modes.
-- Includes an Admin Panel for logs, PID tools, bootloader, and updates.
-- Can run as Electron desktop app or as local web server for tablets.
+This app connects to a hardware temperature controller over Serial or USB HID and provides:
 
-## UI Preview
+- Real-time monitoring and control of heater temperature, power, and fan speed
+- Three control modes: Manual, On/Off, and PID
+- Live dual-canvas charting (temperature + power/PID output)
+- Admin panel with logs, bootloader, and firmware update tools
+- Runs as an Electron desktop app **or** a local Express web server for tablet access
 
-This is the current dashboard screen used in the app:
+---
+
+## Screenshots
 
 ![Process Control Temperature Dashboard](assets/readme-dashboard.png)
 
 ---
 
-## Full Feature List
+## Quick Start
 
-### 1) Control Modes
+```bash
+npm install        # install dependencies
+npm run web        # run as web server → http://localhost:3000
+npm start          # run as Electron desktop app
+```
+
+> **Note:** There is a pre-existing `electron-updater` crash on `npm start`. Use `npm run web` to test UI changes in a browser.
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install dependencies |
+| `npm start` | Run Electron desktop app |
+| `npm run dev` | Run Electron in developer mode |
+| `npm run web` | Run as Express web server (port 3000) |
+| `npm run web-dev` | Web server with nodemon auto-reload |
+| `npm run build` | Build desktop app (default target) |
+| `npm run build-win` | Build Windows NSIS installer |
+| `npm run build-all` | Build for Windows, macOS, and Linux |
+| `npm run rebuild-hid` | Rebuild `node-hid` native bindings |
+
+---
+
+## Features
+
+### Control Modes
 
 #### Manual Mode
-- Power control: `0-100%`
-- Fan speed control: `0-100%`
-- Preset buttons for quick values
-- Slider + input controls with live UI updates
+- Set heater power (`0–100%`) and fan speed (`0–100%`) directly
+- Preset quick-value buttons + slider controls
 
 #### On/Off Mode
-- Target temperature: `20-70 C`
-- Hysteresis options: `1, 2, 3, 4, 5, 10 C`
-- Fan control
-- Automatic heater on/off behavior around target and hysteresis
+- Target temperature: `20–70 °C`
+- Hysteresis: `1, 2, 3, 4, 5, 10 °C`
+- Fan speed control
+- Automatic heater on/off cycling around target ± hysteresis
 
 #### PID Mode
-- Target temperature: `20-70 C`
-- PID parameters: `P`, `I`, `D`
+- Target temperature: `20–70 °C`
+- Configurable P, I, D gains
 - Control type selector: `P`, `PI`, `PD`, `PID`
 - Frequency setting
-- Fan control
-- PID values can be set from UI and sent to hardware
+- Fan speed control
+- PID component values streamed live from hardware
 
-### 2) Real-Time Charts and Data
+---
 
-- Built with `Chart.js`
-- Live graph updates with multiple datasets
-- Auto-pause graph plotting after 20 minutes with no user control changes
-- While graph is paused, live sensor values and CSV saving continue normally
-- Graph plotting resumes automatically on the next user control change
-- Mode-specific datasets:
-  - Manual: Heater Temperature, Power
-  - On/Off: Heater Temperature, Target Temperature, Hysteresis Low, Power
-  - PID: Heater Temperature, Target Temperature, Output and PID components (based on type)
-- Dual axis visualization (temperature + power/output)
+### Real-Time Charts
+
+Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout:
+
+| Mode | Primary canvas | Secondary canvas |
+|------|---------------|-----------------|
+| Manual | Heater Temperature | Power % |
+| On/Off | Temp, Target, Hysteresis bands | Power % |
+| PID | Temp, Target | Output + active PID terms |
+
+- Auto-pauses chart plotting after **20 minutes** of no user interaction (sensor readings and CSV logging continue uninterrupted)
+- Resumes automatically on the next control change
 - Print graph support
-- Last N points and all-points style display behavior
 
-### 3) Communication
+---
 
-#### Serial Communication
-- Auto port detection + manual selection
-- Baud rate support (`9600` to `115200`)
-- Connection status and reconnect handling
+### Hardware Communication
 
-#### USB HID Communication
-- `node-hid` support
-- VID/PID based device configuration
+#### Serial (COM Port)
+- Auto port detection and manual selection
+- Baud rates: `9600` to `115200`
+- Connection status display and reconnect handling
+
+#### USB HID
+- `node-hid` native bindings
+- VID/PID based device identification (`VID=0x12BF, PID=0x0113`)
 - Bootloader communication support
 
-### 4) Admin Panel
+#### Hardware JSON Protocol
 
-#### Dashboard
-- Live system logs with levels
-- Raw data stream (HEX/ASCII style debugging)
-- Runtime statistics (logs count, packet count, uptime, rate)
-- Clear and export actions
+Commands sent to hardware:
 
-#### PID Controls
-- Direct input and sending of PID values
-- Feedback/status logs
+| Key | Value | Meaning |
+|-----|-------|---------|
+| `C` | `1 / 2 / 3` | Control mode: Manual / On/Off / PID |
+| `P` | `0–100` | Heater power % |
+| `F` | `0–100` | Fan speed % |
+| `T` | `20–70` | Target temperature (°C) |
+| `Y` | `1–10` | Hysteresis (On/Off mode, °C) |
+| `PID_P / PID_I / PID_D` | numeric | PID gains |
+| `H` | `0 / 1` | Heater off / on |
 
-#### Bootloader
-- Load HEX file
-- Erase, program, verify firmware
-- Run full erase-program-verify sequence
-- Trigger bootloader mode
-- Progress/status display
+Incoming data arrives as two separate JSON messages per cycle:
+1. **Main data**: `{"T": 25.5, "P": 45.2, "F": 50}` — temperature, power, fan
+2. **PID data**: `{"Pr": 5.67, "It": 2.89, "Dr": 1.23, "Ot": 12.34}` — PID component values (PID mode only)
 
-#### Check for Updates
-- GitHub release update check
-- Current version display
-- Download/install flow through `electron-updater`
+---
 
-### 5) Web Server / Tablet Mode
+### Admin Panel
 
-- `Express` web mode (`npm run web`)
-- Local network access
-- PWA-ready assets (`manifest.json`)
-- Responsive layout for touch devices
+| Section | Features |
+|---------|---------|
+| Dashboard | Live system logs, raw HEX/ASCII data stream, runtime stats (uptime, packet rate), export |
+| PID Controls | Direct PID value input and hardware send |
+| Bootloader | Load HEX file, erase, program, verify, run full sequence, progress display |
+| Updates | GitHub release check, current version display, download/install via `electron-updater` |
 
-### 6) Safety and Reliability
+---
 
-- Safe initialization commands when hardware connects
-- Safe shutdown sequence on app close
-- Safety commands during control mode switching
-- Logs added for easier troubleshooting and debugging
+### Safety & Reliability
 
-### 7) Export and Logging
+- **On connect**: hardware initialization sequence sent automatically
+- **On close / mode switch**: safe shutdown sequence — sets `C=1, F=0, P=0, T=20, H=0`, PID gains = 0
+- 40 ms minimum command write interval to avoid serial flooding
 
-- CSV data export
+---
+
+### Data Export
+
+- CSV data export (mode-specific headers, started/stopped from UI)
 - System log export
 - Raw stream export
 
 ---
 
-## Change History (Features + Fixes)
+### Web / Tablet Mode
 
-This section summarizes major app changes.  
-For full technical detail, see `CHANGELOG.md`.
+- `npm run web` serves `index.html` via Express on port 3000
+- Accessible from any device on the local network
+- PWA-ready (`manifest.json`) for tablet home-screen install
+- Responsive layout for touch devices
+- Falls back gracefully when Electron IPC is unavailable (uses Web Serial API where supported)
 
-### v0.0.3 (February 4, 2026)
+---
 
-- Fixed chart shadow/fill artifacts (clean line rendering).
-- Improved chart cleanup and re-init when switching modes.
-- Added stale-data skip behavior after mode change.
-- Added dataset count validation for each mode/type.
-- Improved PID chart color visibility.
-- Fixed target temperature inputs to update on Enter/blur (better typing behavior).
-- Fixed PID fan speed slider reference/update issues.
-- Added system online/offline indicator to Admin Panel.
+## Architecture
 
-### Unreleased Updates (December 2024 and February 2026)
+```
+main.js  (Electron main process)
+  ├── SerialPort / node-hid  →  hardware communication
+  ├── ~30 IPC handlers        →  UI commands → hardware writes
+  ├── electron-updater         →  GitHub release auto-updates
+  └── preload.js               →  secure IPC bridge (context isolation)
 
-#### New Features
+renderer.js  (Electron renderer / browser, ~6100 lines)
+  ├── Chart.js (dual canvas)   →  primary (temps) + secondary (power/PID)
+  ├── UI state machine         →  control modes, form values, chart datasets
+  └── inactivity logic         →  pauses chart after 20 min idle
+```
 
-- Added support for receiving PID values as separate JSON messages (`Pr`, `It`, `Dr`, `Ot`).
-- Added PID value storage/merge flow so main data and PID data work together.
-- Added detailed debug logging in main and renderer for JSON flow and chart updates.
-- PID control type now auto-loads default values and sends all `P/I/D` immediately.
-- Added automatic safe reset commands when hardware connects.
-- Added automatic safe shutdown command sequence on app close.
-
-#### Safety and Bug Fixes
-
-- Fixed unsafe behavior where heater/fan could stay on while switching control modes.
-- Added safe command sequence during mode switch (fan off, heater off, safe target, power 0).
-- Fixed PID target temperature line to use UI-set target value.
-- Set PID secondary values to clear placeholders where hardware data is pending.
-- Fixed power slider command sending to hardware.
-- Fixed target temperature command sending in On/Off and PID modes.
-- Fixed hysteresis command sending condition for On/Off mode.
-
-#### Chart and UI Fixes
-
-- Fixed critical missing X-axis labels that caused lines to disappear.
-- Fixed On/Off chart update routing so data goes to the correct chart instance.
-- Fixed Manual chart overwriting On/Off chart in certain flows.
-- Fixed hysteresis legend and line visibility behavior.
-- Added chart guards, initialization checks, and better chart error logs.
-- Added initial chart points so datasets stay visible.
-- Added 20-minute inactivity pause for chart plotting without stopping sensor text updates or CSV logging.
-
-#### Performance and Cleanup
-
-- Removed heavy extra hardware communication from mode switching path.
-- Restored near-instant control mode switch speed.
-- Reduced unnecessary polling and debug logging.
-- Cleaned obsolete comments and old code markers.
-
-### Previous Version Notes
-
-- Version `1.2.9`: Graph label changed from "Linear Heater" to "Heater Temperature".
-- Earlier versions introduced core features: Manual/On/Off/PID controls, serial/USB communication, live charting, admin panel, and updates.
+Context isolation is enabled. `preload.js` exposes only a narrow `window.electronAPI` surface — `nodeIntegration` is disabled in the renderer.
 
 ---
 
 ## Tech Stack
 
-- `electron` `^38.2.2`
-- `chart.js` `^4.4.4`
-- `express` `^4.21.2`
-- `serialport` `^12.0.0`
-- `node-hid` `^3.1.1`
-- `electron-updater` `^6.6.2`
-- `three` `^0.181.1`
-- `occt-import-js` `^0.0.23`
-
----
-
-## Setup
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. If `node-hid` has build issues on Windows, rebuild it:
-
-```bash
-npm run rebuild-hid
-```
-
-3. Run desktop app:
-
-```bash
-npm start
-```
-
-4. Run desktop dev mode:
-
-```bash
-npm run dev
-```
-
-5. Run web mode:
-
-```bash
-npm run web
-```
-
-6. Run web mode with auto-reload:
-
-```bash
-npm run web-dev
-```
-
-7. Build desktop app (default target):
-
-```bash
-npm run build
-```
-
-8. Build Windows app:
-
-```bash
-npm run build-win
-```
-
-9. Build all platforms:
-
-```bash
-npm run build-all
-```
-
----
-
-## Basic Usage
-
-1. Connect hardware (Serial or USB).
-2. Select control mode (Manual / On/Off / PID).
-3. Set values (power, fan, target, PID).
-4. Watch live chart data.
-5. Use Admin Panel for logs, firmware, and updates.
-6. Export data when needed.
+| Package | Version |
+|---------|---------|
+| `electron` | `^38.2.2` |
+| `electron-builder` | `^24.13.3` |
+| `electron-updater` | `^6.6.2` |
+| `chart.js` | `^4.4.4` |
+| `express` | `^4.21.2` |
+| `serialport` | `^12.0.0` |
+| `node-hid` | `^3.1.1` |
+| `three` | `^0.181.1` |
+| `occt-import-js` | `^0.0.23` |
 
 ---
 
 ## System Requirements
 
-- Windows 10/11 recommended (cross-platform build support exists)
-- Node.js `16+`
-- Compatible temperature control hardware (Serial or USB)
+- **OS:** Windows 10 / 11 recommended (cross-platform build support exists)
+- **Node.js:** 16+
+- **Hardware:** Compatible temperature control unit (Serial or USB HID)
 
-Recommended for easier setup:
-- Python (for native module build tools, if needed)
-- Visual Studio Build Tools (for native module compilation on Windows)
+For native module builds on Windows, you may also need:
+- Python
+- Visual Studio Build Tools
+
+---
+
+## Setup
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **If `node-hid` has build errors on Windows, rebuild it:**
+   ```bash
+   npm run rebuild-hid
+   ```
+
+3. **Run in web mode (recommended for development):**
+   ```bash
+   npm run web
+   ```
+   Open `http://localhost:3000` in a browser.
+
+4. **Run as Electron desktop app:**
+   ```bash
+   npm start
+   ```
+
+---
+
+## Usage
+
+1. Connect hardware via Serial COM port or USB HID
+2. Select a control mode: **Manual**, **On/Off**, or **PID**
+3. Set values (power, fan speed, target temperature, PID gains)
+4. Monitor live chart data
+5. Open the Admin Panel for logs, firmware updates, and bootloader tools
+6. Export data to CSV when needed
+
+---
+
+## Change History
+
+For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
+
+### v0.1.2 (current)
+- UI migrated to DaisyUI + Tailwind CSS design system
+- Improved layout for desktop and tablet
+
+### v0.0.3 (February 4, 2026)
+- Fixed chart shadow/fill rendering artifacts (clean line display)
+- Improved chart cleanup and re-initialization on mode switch
+- Added stale-data skip after mode change
+- Dataset count validation for each mode and PID sub-type
+- Improved PID chart color visibility
+- Fixed target temperature input (updates on Enter/blur, not while typing)
+- Fixed PID fan speed slider reference
+- Added system online/offline indicator in Admin Panel
+
+### Unreleased (December 2024 – February 2026)
+- Two-message PID data reception (`Pr`, `It`, `Dr`, `Ot` as separate JSON)
+- `lastPidValues` merge flow — combines PID and main data for chart updates
+- Automatic safe init sequence on hardware connect
+- Automatic safe shutdown sequence on app close
+- Safe mode-switch sequence (fan off, heater off, safe target, power 0)
+- Fixed critical missing X-axis labels (lines were disappearing)
+- Fixed On/Off chart update routing
+- 20-minute inactivity chart pause (sensor data and CSV logging unaffected)
+- Restored near-instant mode switch speed (removed heavy polling from switch path)
 
 ---
 
 ## License
 
-MIT
+MIT — © Matrix TSL
