@@ -2,7 +2,7 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.3` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.4` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
@@ -262,13 +262,20 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### Unreleased (latest)
-- Fixed print chart function to correctly export **both** primary and secondary canvases on separate pages
-- Removed dead fallback/initialization code in `printBothCharts`; function now always uses `chartJsRef` + `window.liveChartRef`
-- Print now waits for both images to fully load before triggering the browser print dialog
-- Cleaned up print CSS: uses modern `break-after: page` alongside legacy `page-break-after`
+### v0.1.4 (current)
+- Admin panel moved inline into main window — no longer opens as a separate Electron window
+- Added **Integral Windup** toggle control in PID mode (PI sub-type only)
+- PID default gains now persist in `localStorage`; added **Restore to Default** button (`P=3.162, I=0.01, D=150`)
+- Bootloader Connect button starts disabled; auto-enables and auto-connects USB HID after Trigger Bootloader succeeds
+- Added `check-bootloader-device` IPC to poll for USB HID presence before connecting
+- Erase-Program-Verify now shows live progress at each step (erase → program → verify)
+- Bootloader flash batch inter-write delay reduced from 100 ms to 2 ms (significantly faster programming)
+- Bootloader READ_CRC retries reduced to 3 with 2 s base delay (was 5 retries / 8 s)
+- Chart reinitializes to Manual mode automatically on hardware reconnect
+- Web server (`server.js`) sets `Cache-Control: no-store` on HTML responses to prevent stale UI after reload
+- Removed verbose per-batch bootloader console logging; only milestone batches are logged
 
-### v0.1.3 (current)
+### v0.1.3
 - Project cleanup: removed orphaned files (`chart.html`, `renderer-web.js`, backup HTMLs, `inject_slider_css.js`, `chart-page.js`)
 - Removed unused vendored 3D libs from `assets/libs/` (Three.js, OCCT, GLTFLoader, OrbitControls — ~7.5 MB)
 - Removed unused npm packages (`occt-import-js`, `three`, `jimp`, `to-ico`) — 70 packages pruned

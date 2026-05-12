@@ -1555,6 +1555,11 @@ async function sendShutdownCommandsOnReconnect() {
 
         addToLog('UI updated to match safe state');
 
+        // Reinitialize chart for Manual mode after reconnect
+        skipNextDataPoint = true;
+        initChartForManual();
+        addToLog('Chart reinitialized for Manual mode');
+
     } catch (error) {
         addToLog('Error sending initialization commands: ' + error.message);
         safetyCommandsSent = false; // Reset flag if there was an error
@@ -3071,12 +3076,6 @@ document.addEventListener('DOMContentLoaded', function () {
         tryWebSerialAutoConnect();
     }
 
-    // Admin panel functionality
-    if (adminBtn) {
-        adminBtn.addEventListener('click', function () {
-            openAdminPanel();
-        });
-    }
 
     // ============================================================================
     // PROCESS CONTROL MODE SWITCHING
@@ -3137,6 +3136,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // PID Control Type and Parameter inputs
     var pidControlType = document.getElementById('pidControlType');
+    var errorMenuWrapper = document.getElementById('errorMenuWrapper');
+    var integralWindupBtn = document.getElementById('integralWindupBtn');
+    var integralWindupNextValue = 1;
     var pidPInput = document.getElementById('pidPInput');
     var pidIInput = document.getElementById('pidIInput');
     var pidDInput = document.getElementById('pidDInput');
@@ -3164,6 +3166,20 @@ document.addEventListener('DOMContentLoaded', function () {
         if (pidDInputContainer) {
             pidDInputContainer.style.display =
                 (controlType === 'PD' || controlType === 'PID') ? 'flex' : 'none';
+        }
+
+        updateIntegralWindupVisibility();
+    }
+
+    function updateIntegralWindupVisibility() {
+        if (!errorMenuWrapper || !pidControlType) return;
+        var show = (currentControlMode === 'pid' && pidControlType.value === 'PI');
+        errorMenuWrapper.classList.toggle('hidden', !show);
+        if (!show) {
+            integralWindupNextValue = 1;
+            if (integralWindupBtn) integralWindupBtn.textContent = 'Integral Windup DISABLED';
+            var errorMenuDetails = document.getElementById('errorMenuDetails');
+            if (errorMenuDetails) errorMenuDetails.removeAttribute('open');
         }
     }
 
@@ -3491,6 +3507,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         }
+
+        updateIntegralWindupVisibility();
     }
 
     // Setup control mode dropdown
@@ -4238,91 +4256,34 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (window.electronAPI && window.electronAPI.sendPIDValue) {
                     try {
                         var pValue, iValue, dValue;
-                        
+                        var savedP = parseFloat(localStorage.getItem('pid-default-P')) || 3.162;
+                        var savedI = parseFloat(localStorage.getItem('pid-default-I')) || 0.01;
+                        var savedD = parseFloat(localStorage.getItem('pid-default-D')) || 150;
+
                         if (newControlType === 'P') {
-                            // P mode: P=30, I=0, D=0
-                            pValue = 30;
-                            iValue = 0;
-                            dValue = 0;
-                            
-                            // Update input boxes
-                            if (pidPInput) pidPInput.value = pValue;
-                            if (pidIInput) pidIInput.value = iValue;
-                            if (pidDInput) pidDInput.value = dValue;
-                            
-                            // Send all three values to hardware
-                            var resultP = await window.electronAPI.sendPIDValue('P', pValue);
-                            var resultI = await window.electronAPI.sendPIDValue('I', iValue);
-                            var resultD = await window.electronAPI.sendPIDValue('D', dValue);
-                            
-                            if (resultP && resultP.success && resultI && resultI.success && resultD && resultD.success) {
-                                addToLog('PID Control Type: P mode - P=' + pValue + ', I=' + iValue + ', D=' + dValue + ' sent to hardware');
-                            } else {
-                                addToLog('PID Control Type: P mode - Error sending values to hardware');
-                            }
+                            pValue = savedP; iValue = 0; dValue = 0;
                         } else if (newControlType === 'PI') {
-                            // PI mode: P=12, I=0.1, D=0
-                            pValue = 12;
-                            iValue = 0.1;
-                            dValue = 0;
-                            
-                            // Update input boxes
-                            if (pidPInput) pidPInput.value = pValue;
-                            if (pidIInput) pidIInput.value = iValue;
-                            if (pidDInput) pidDInput.value = dValue;
-                            
-                            // Send all three values to hardware
-                            var resultP = await window.electronAPI.sendPIDValue('P', pValue);
-                            var resultI = await window.electronAPI.sendPIDValue('I', iValue);
-                            var resultD = await window.electronAPI.sendPIDValue('D', dValue);
-                            
-                            if (resultP && resultP.success && resultI && resultI.success && resultD && resultD.success) {
-                                addToLog('PID Control Type: PI mode - P=' + pValue + ', I=' + iValue + ', D=' + dValue + ' sent to hardware');
-                            } else {
-                                addToLog('PID Control Type: PI mode - Error sending values to hardware');
-                            }
+                            pValue = savedP; iValue = savedI; dValue = 0;
                         } else if (newControlType === 'PD') {
-                            // PD mode: P=12, I=0, D=220
-                            pValue = 12;
-                            iValue = 0;
-                            dValue = 220;
-                            
-                            // Update input boxes
-                            if (pidPInput) pidPInput.value = pValue;
-                            if (pidIInput) pidIInput.value = iValue;
-                            if (pidDInput) pidDInput.value = dValue;
-                            
-                            // Send all three values to hardware
-                            var resultP = await window.electronAPI.sendPIDValue('P', pValue);
-                            var resultI = await window.electronAPI.sendPIDValue('I', iValue);
-                            var resultD = await window.electronAPI.sendPIDValue('D', dValue);
-                            
-                            if (resultP && resultP.success && resultI && resultI.success && resultD && resultD.success) {
-                                addToLog('PID Control Type: PD mode - P=' + pValue + ', I=' + iValue + ', D=' + dValue + ' sent to hardware');
-                            } else {
-                                addToLog('PID Control Type: PD mode - Error sending values to hardware');
-                            }
+                            pValue = savedP; iValue = 0; dValue = savedD;
                         } else if (newControlType === 'PID') {
-                            // PID mode: P=12, I=0.1, D=220
-                            pValue = 12;
-                            iValue = 0.1;
-                            dValue = 220;
-                            
-                            // Update input boxes
-                            if (pidPInput) pidPInput.value = pValue;
-                            if (pidIInput) pidIInput.value = iValue;
-                            if (pidDInput) pidDInput.value = dValue;
-                            
-                            // Send all three values to hardware
-                            var resultP = await window.electronAPI.sendPIDValue('P', pValue);
-                            var resultI = await window.electronAPI.sendPIDValue('I', iValue);
-                            var resultD = await window.electronAPI.sendPIDValue('D', dValue);
-                            
-                            if (resultP && resultP.success && resultI && resultI.success && resultD && resultD.success) {
-                                addToLog('PID Control Type: PID mode - P=' + pValue + ', I=' + iValue + ', D=' + dValue + ' sent to hardware');
-                            } else {
-                                addToLog('PID Control Type: PID mode - Error sending values to hardware');
-                            }
+                            pValue = savedP; iValue = savedI; dValue = savedD;
+                        }
+
+                        // Update input boxes
+                        if (pidPInput) pidPInput.value = pValue;
+                        if (pidIInput) pidIInput.value = iValue;
+                        if (pidDInput) pidDInput.value = dValue;
+
+                        // Send all three values to hardware
+                        var resultP = await window.electronAPI.sendPIDValue('P', pValue);
+                        var resultI = await window.electronAPI.sendPIDValue('I', iValue);
+                        var resultD = await window.electronAPI.sendPIDValue('D', dValue);
+
+                        if (resultP && resultP.success && resultI && resultI.success && resultD && resultD.success) {
+                            addToLog('PID Control Type: ' + newControlType + ' mode - P=' + pValue + ', I=' + iValue + ', D=' + dValue + ' sent to hardware');
+                        } else {
+                            addToLog('PID Control Type: ' + newControlType + ' mode - Error sending values to hardware');
                         }
                     } catch (error) {
                         addToLog('Error setting PID values for control type: ' + error.message);
@@ -4342,13 +4303,32 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
+        // Integral Windup toggle button handler (Error menu, visible in PID + PI mode only)
+        if (integralWindupBtn) {
+            integralWindupBtn.addEventListener('click', async function () {
+                var value = integralWindupNextValue;
+                integralWindupNextValue = (value === 1) ? 2 : 1;
+                integralWindupBtn.textContent = 'Integral Windup ' + (value === 1 ? 'ENABLED' : 'DISABLED');
+                try {
+                    if (window.electronAPI && window.electronAPI.sendCustomJson) {
+                        await window.electronAPI.sendCustomJson({ W: value }, 'Integral Windup W=' + value);
+                        addToLog('Integral Windup: Sent {W: ' + value + '}');
+                    } else {
+                        addToLog('Integral Windup: {W: ' + value + '} (hardware not available)');
+                    }
+                } catch (error) {
+                    addToLog('Integral Windup: Error sending W=' + value + ': ' + error.message);
+                }
+            });
+        }
+
         // P value input change handler
         if (pidPInput) {
             pidPInput.addEventListener('change', async function () {
                 var value = parseFloat(pidPInput.value);
                 if (isNaN(value)) {
                     addToLog('PID P: Invalid value');
-                    pidPInput.value = 1.0;
+                    pidPInput.value = parseFloat(localStorage.getItem('pid-default-P')) || 3.162;
                     return;
                 }
 
@@ -4383,7 +4363,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 var value = parseFloat(pidIInput.value);
                 if (isNaN(value)) {
                     addToLog('PID I: Invalid value');
-                    pidIInput.value = 0.1;
+                    pidIInput.value = parseFloat(localStorage.getItem('pid-default-I')) || 0.01;
                     return;
                 }
 
@@ -4418,7 +4398,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 var value = parseFloat(pidDInput.value);
                 if (isNaN(value)) {
                     addToLog('PID D: Invalid value');
-                    pidDInput.value = 0.05;
+                    pidDInput.value = parseFloat(localStorage.getItem('pid-default-D')) || 150;
                     return;
                 }
 
@@ -5632,89 +5612,6 @@ if (fan100Btn) {
     });
 }
 
-// Admin panel functionality
-async function openAdminPanel() {
-    // Open admin panel using IPC to ensure preload script access
-    if (window.electronAPI && window.electronAPI.openAdminPanel) {
-        try {
-            const result = await window.electronAPI.openAdminPanel();
-            if (result.success) {
-                if (result.alreadyOpen) {
-                    addToLog('Admin panel already open - focused existing window');
-                } else {
-                    addToLog('Admin panel opened');
-                }
-            } else {
-                addToLog('Failed to open admin panel: ' + (result.error || 'Unknown error'));
-            }
-        } catch (error) {
-            addToLog('Error opening admin panel: ' + error.message);
-            // Fallback to window.open if IPC fails
-            // Use window name to reuse same window if already open
-            var fallbackWindow = window.open('admin.html', 'adminPanel', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-            if (fallbackWindow) {
-                // Check if window was already open (window.open returns existing window)
-                if (fallbackWindow.location.href && fallbackWindow.location.href.includes('admin.html')) {
-                    fallbackWindow.focus();
-                    addToLog('Admin panel already open - focused existing window (fallback)');
-                } else {
-                    addToLog('Admin panel opened (fallback method)');
-                }
-            } else {
-                addToLog('Failed to open admin panel - popup blocked?');
-            }
-        }
-    } else {
-        // Fallback to window.open if electronAPI not available
-        // Use window name to reuse same window if already open
-        var fallbackWindow = window.open('admin.html', 'adminPanel', 'width=1200,height=800,scrollbars=yes,resizable=yes');
-        if (fallbackWindow) {
-            // Check if window was already open (window.open returns existing window)
-            try {
-                if (fallbackWindow.location.href && fallbackWindow.location.href.includes('admin.html')) {
-                    fallbackWindow.focus();
-                    addToLog('Admin panel already open - focused existing window (fallback)');
-                } else {
-                    addToLog('Admin panel opened (fallback method)');
-                }
-            } catch (e) {
-                // Cross-origin error means window is new, which is fine
-                addToLog('Admin panel opened (fallback method)');
-            }
-        } else {
-            addToLog('Failed to open admin panel - popup blocked?');
-        }
-    }
-}
-
-function setupAdminCommunication(adminWindow) {
-    // Send initial data to admin panel
-    if (adminWindow.setConnectionStartTime) {
-        adminWindow.setConnectionStartTime();
-    }
-
-    // Forward logs to admin panel
-    const originalAddToLog = addToLog;
-    addToLog = function (message, type = 'info') {
-        originalAddToLog(message, type);
-
-        // Also send to admin panel if it's open
-        if (adminWindow && !adminWindow.closed && adminWindow.addAdminLog) {
-            adminWindow.addAdminLog(message, type);
-        }
-    };
-
-    // Forward raw data to admin panel
-    const originalAddRawData = addRawData;
-    addRawData = function (data) {
-        originalAddRawData(data);
-
-        // Also send to admin panel if it's open
-        if (adminWindow && !adminWindow.closed && adminWindow.addRawDataEntry) {
-            adminWindow.addRawDataEntry(data, 'hex');
-        }
-    };
-}
 
 // clearAllGraphs is now defined earlier in the file (line 17) as part of graph lifecycle management
 // The earlier function completely destroys and clears all graph traces, which is what we need

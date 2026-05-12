@@ -7,6 +7,7 @@ const fs = require('fs').promises;
 const { SerialPort } = require('serialport');
 const { exec } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const { pathToFileURL } = require('url');
 const HID = require('node-hid');
 
 
@@ -14,7 +15,6 @@ const HID = require('node-hid');
 let mainWindow;
 let splashWindow;
 let splashStartTime = 0; // Track when splash screen was shown
-let adminWindow = null; // Track admin panel window to prevent multiple windows
 let serialPort = null;
 let usbHidDevice = null; // Track USB HID device for bootloader
 let rxBuffer = Buffer.alloc(0);
@@ -265,12 +265,6 @@ function createWindow() {
     // Now allow the window to close
     console.log('[SHUTDOWN] Closing window...');
 
-    // Close admin window as part of main app shutdown
-    if (adminWindow && !adminWindow.isDestroyed()) {
-      console.log('[SHUTDOWN] Closing admin window...');
-      adminWindow.close();
-      adminWindow = null;
-    }
 
     mainWindow.destroy();
   });
@@ -352,7 +346,7 @@ function sendSerialTxDebugToAllWindows(txData) {
 ipcMain.on('ui-debug-log', (event, uiData) => {
   try {
     const sourceWindow = BrowserWindow.fromWebContents(event.sender);
-    const sourceName = sourceWindow === mainWindow ? 'dashboard' : (sourceWindow === adminWindow ? 'admin' : 'window');
+    const sourceName = sourceWindow === mainWindow ? 'dashboard' : 'window';
     sendUiDebugLogToAllWindows({
       timestamp: Date.now(),
       source: sourceName,
@@ -2849,8 +2843,7 @@ async function sendBootloaderCommand(cmd, data = Buffer.alloc(0), retries = 3, d
           bootloaderResponsePromise.resolve = resolve;
           bootloaderResponsePromise.reject = reject;
 
-          // Set timeout - increase significantly for READ_CRC which may take longer to calculate
-          const timeoutMs = (cmd === READ_CRC) ? delayMs + 10000 : delayMs + 2000; // 10 seconds for READ_CRC
+          const timeoutMs = delayMs + 3000;
           const timeoutId = setTimeout(() => {
             if (bootloaderResponsePromise && bootloaderResponsePromise.expectedCmd === cmd) {
               console.log(`[BOOTLOADER] ⚠ Timeout waiting for response to command ${cmd} after ${timeoutMs}ms`);
@@ -2921,6 +2914,19 @@ ipcMain.handle('send-bootloader', async (event, value) => {
   }
 });
 
+// IPC handler for checking if bootloader USB HID device is present (poll before connecting)
+ipcMain.handle('check-bootloader-device', (event, vid, pid) => {
+  try {
+    const vendorId = parseInt(String(vid).replace(/^0x/i, ''), 16);
+    const productId = parseInt(String(pid).replace(/^0x/i, ''), 16);
+    if (isNaN(vendorId) || isNaN(productId)) return false;
+    const devices = HID.devices();
+    return devices.some(d => d.vendorId === vendorId && d.productId === productId);
+  } catch (e) {
+    return false;
+  }
+});
+
 // IPC handler for connecting to bootloader via USB
 ipcMain.handle('connect-to-bootloader-usb', async (event, vid, pid) => {
   try {
@@ -2983,7 +2989,7 @@ ipcMain.handle('connect-to-bootloader-usb', async (event, vid, pid) => {
         // First byte is report ID (usually 0), actual data starts at byte 1
         if (data.length > 1) {
           const actualData = data.slice(1); // Skip report ID
-          console.log(`[USB HID] Received data (${actualData.length} bytes): ${actualData.toString('hex')}`);
+          console.log(`[USB HID] Received data (${actualData.length} bytes)`);
           // Process bootloader response frames immediately
           processBootloaderResponse(actualData);
         } else if (data.length === 1) {
@@ -3099,7 +3105,9 @@ ipcMain.handle('bootloader-program-flash', async (event) => {
         label: `Programming ${batchNumber}/${totalBatches}...`
       });
 
-      console.log(`[BOOTLOADER] Programming batch ${batchNumber}/${totalBatches} (${batch.length} records)`);
+      if (batchNumber === 1 || batchNumber % 10 === 0 || batchNumber === totalBatches) {
+        console.log(`[BOOTLOADER] Programming batch ${batchNumber}/${totalBatches} (${batch.length} records)`);
+      }
 
       // Build command data: all hex record bytes (CMD byte is added by buildBootloaderFrame)
       const commandData = Buffer.alloc(1000); // Large enough buffer
@@ -3132,20 +3140,15 @@ ipcMain.handle('bootloader-program-flash', async (event) => {
 
       // Send the command with all records in this batch
       const actualData = commandData.slice(0, offset);
-      console.log(`[BOOTLOADER] Sending PROGRAM_FLASH batch ${batchNumber}/${totalBatches} with ${actualData.length} bytes of hex data`);
       try {
         await sendBootloaderCommand(PROGRAM_FLASH, actualData, 1, 0); // No retries, no delay for speed
-        console.log(`[BOOTLOADER] ✓ PROGRAM_FLASH batch ${batchNumber}/${totalBatches} sent successfully`);
       } catch (error) {
         console.error(`[BOOTLOADER] ✗ PROGRAM_FLASH batch ${batchNumber}/${totalBatches} failed:`, error);
         throw error; // Re-throw to stop programming
       }
 
-      // Wait between batches to allow device to process
-      // Increase delay significantly to ensure device can process each batch
       if (i + RECORDS_PER_COMMAND < bootloaderHexRecords.length) {
-        // Wait longer between batches - device needs time to write to flash
-        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between batches
+        await new Promise(resolve => setTimeout(resolve, 2));
       }
     }
 
@@ -3201,8 +3204,7 @@ ipcMain.handle('bootloader-read-crc', async (event) => {
     console.log(`[BOOTLOADER] Sending READ_CRC with: StartAddr=0x${bootloaderFlashStartAddress.toString(16)}, Len=${bootloaderFlashLength}, CRC=0x${bootloaderExpectedCRC.toString(16).padStart(4, '0')}`);
     console.log(`[BOOTLOADER] READ_CRC command data: ${crcCommandData.toString('hex')}`);
 
-    // Send READ_CRC with the proper data (5 retries, 8 second delay)
-    const result = await sendBootloaderCommand(READ_CRC, crcCommandData, 5, 8000);
+    const result = await sendBootloaderCommand(READ_CRC, crcCommandData, 3, 2000);
 
     if (!result.success) {
       bootloaderEraseProgVerify = false;
@@ -3377,67 +3379,4 @@ ipcMain.handle('get-app-version', async () => {
 });
 
 // IPC handler for opening admin panel window
-ipcMain.handle('open-admin-panel', async () => {
-  try {
-    // Check if admin window already exists and is not destroyed
-    if (adminWindow && !adminWindow.isDestroyed()) {
-      // Window already exists, just focus it
-      adminWindow.focus();
-      return { success: true, alreadyOpen: true };
-    }
-
-    // Create new admin window
-    adminWindow = new BrowserWindow({
-      width: 1200,
-      height: 800,
-      show: false,
-      resizable: true,  // Allow resizing
-      icon: path.join(__dirname, 'assets', 'favicon.ico'),  // Window icon
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js')
-      },
-      autoHideMenuBar: true,
-      titleBarStyle: 'default'
-    });
-
-    // Load the admin.html file
-    adminWindow.loadFile(path.join(__dirname, 'admin.html'));
-
-    // Handle child windows opened from admin panel
-    adminWindow.webContents.setWindowOpenHandler(({ url }) => {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: 1500,
-          height: 850,
-          resizable: true,  // Allow resizing
-          icon: path.join(__dirname, 'assets', 'favicon.ico'),  // Set icon for child windows
-          autoHideMenuBar: true,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true
-          }
-        }
-      };
-    });
-
-    // Show window when ready
-    adminWindow.once('ready-to-show', () => {
-      adminWindow.show();
-    });
-
-    // Handle window closed - clear the reference
-    adminWindow.on('closed', () => {
-      adminWindow = null;
-    });
-
-    return { success: true };
-  } catch (error) {
-    console.error('Error opening admin panel:', error);
-    return { success: false, error: error.message };
-  }
-});
-
 

@@ -269,6 +269,19 @@
                 </li>
                 <li><a href="#" data-page="pct-main" class="sidebar-link active">Process Control Temperature</a></li>
 
+                <li id="errorMenuWrapper" class="hidden">
+                    <details id="errorMenuDetails">
+                        <summary>Error</summary>
+                        <ul>
+                            <li>
+                                <button id="integralWindupBtn" class="w-full text-left">
+                                    Integral Windup DISABLED
+                                </button>
+                            </li>
+                        </ul>
+                    </details>
+                </li>
+
                 <li class="menu-title mt-2">Tools</li>
                 <li><a href="#" data-page="admin" data-app="admin" class="sidebar-link">🔧 Admin</a></li>
             </ul>
@@ -754,6 +767,16 @@
                                     <span class="pid-status" id="differentialStatus"></span>
                                 </div>
                             </div>
+                            <p class="text-xs text-base-content/50 mt-1">
+                                These values are used as starting defaults when switching PID control types.
+                                Changes are saved automatically and applied on next startup.
+                            </p>
+                            <div class="card-actions justify-end mt-2">
+                                <button id="pidRestoreDefaultsBtn" class="btn btn-sm btn-outline btn-warning">
+                                    Restore to Default
+                                </button>
+                                <span id="pidRestoreStatus" class="text-xs self-center"></span>
+                            </div>
                         </div>
                     </div>
                 </div><!-- /pidTab -->
@@ -815,7 +838,7 @@
                                     <button class="btn btn-sm btn-outline" id="verifyBtn" onclick="verifyFlash()" disabled style="display:none;">Verify</button>
                                     <button class="btn btn-sm btn-success" id="runAppBtn" onclick="runApplication()" disabled>Run Application</button>
                                     <button class="btn btn-sm btn-error col-span-2" id="eraseProgVerifyBtn" onclick="eraseProgramVerify()" disabled>Erase-Program-Verify</button>
-                                    <button class="btn btn-sm btn-outline" id="connectBtn" onclick="connectBootloader()">Connect</button>
+                                    <button class="btn btn-sm btn-outline" id="connectBtn" onclick="connectBootloader()" disabled>Connect</button>
                                     <button class="btn btn-sm btn-outline col-span-3" id="triggerBootloaderBtn" onclick="triggerBootloader()">Trigger Bootloader</button>
                                 </div>
                                 <div id="firmwareProgressSection" class="space-y-2" style="display:none;">
@@ -1307,6 +1330,23 @@
 
     let lastProportionalValue = '', lastIntegralValue = '', lastDifferentialValue = '';
 
+    const PID_FACTORY_DEFAULTS = { P: 3.162, I: 0.01, D: 150 };
+
+    function loadAdminPIDDefaults() {
+        var pVal = localStorage.getItem('pid-default-P');
+        var iVal = localStorage.getItem('pid-default-I');
+        var dVal = localStorage.getItem('pid-default-D');
+        var p = pVal !== null ? parseFloat(pVal) : PID_FACTORY_DEFAULTS.P;
+        var i = iVal !== null ? parseFloat(iVal) : PID_FACTORY_DEFAULTS.I;
+        var d = dVal !== null ? parseFloat(dVal) : PID_FACTORY_DEFAULTS.D;
+        var pIn = document.getElementById('proportionalInput');
+        var iIn = document.getElementById('integralInput');
+        var dIn = document.getElementById('differentialInput');
+        if (pIn) { pIn.value = p; lastProportionalValue = String(p); }
+        if (iIn) { iIn.value = i; lastIntegralValue = String(i); }
+        if (dIn) { dIn.value = d; lastDifferentialValue = String(d); }
+    }
+
     async function sendAdminPIDValue(type, value) {
         if (!window.electronAPI || !window.electronAPI.sendPIDValue) {
             addAdminLog('PID control not available', 'error'); return false;
@@ -1373,7 +1413,7 @@
         var btns = {}; ids.forEach(id => { btns[id] = document.getElementById(id); });
         var enable = (id, val) => { if(btns[id]) btns[id].disabled = !val; };
         switch(state) {
-            case 'disconnected': enable('connectBtn',true); enable('triggerBootloaderBtn',true); enable('loadHexBtn',false); enable('eraseProgVerifyBtn',false); enable('runAppBtn',false); enable('bootloaderVerBtn',false); enable('eraseBtn',false); enable('programBtn',false); enable('verifyBtn',false); break;
+            case 'disconnected': enable('connectBtn',false); enable('triggerBootloaderBtn',true); enable('loadHexBtn',false); enable('eraseProgVerifyBtn',false); enable('runAppBtn',false); enable('bootloaderVerBtn',false); enable('eraseBtn',false); enable('programBtn',false); enable('verifyBtn',false); break;
             case 'connected':    enable('connectBtn',true); enable('triggerBootloaderBtn',false); enable('loadHexBtn',true); enable('eraseProgVerifyBtn',false); enable('runAppBtn',false); enable('bootloaderVerBtn',false); enable('eraseBtn',false); enable('programBtn',false); enable('verifyBtn',false); break;
             case 'hex_loaded':   enable('connectBtn',true); enable('triggerBootloaderBtn',false); enable('loadHexBtn',true); enable('eraseProgVerifyBtn',true); enable('runAppBtn',false); enable('bootloaderVerBtn',false); enable('eraseBtn',false); enable('programBtn',false); enable('verifyBtn',false); break;
             case 'busy':         ids.forEach(id => enable(id, false)); break;
@@ -1403,10 +1443,21 @@
         try {
             if (window.electronAPI && window.electronAPI.sendBootloader) {
                 const result = await window.electronAPI.sendBootloader(1);
-                addBootloaderLog(result.success ? 'Bootloader command sent' : 'Failed: '+(result.error||'Unknown'), result.success ? 'success' : 'error');
-            } else addBootloaderLog('Bootloader control not available', 'error');
-        } catch(e) { addBootloaderLog('Error: '+e.message, 'error'); }
-        finally { btn.disabled = false; }
+                if (result.success) {
+                    addBootloaderLog('Bootloader command sent — waiting for device...', 'info');
+                    var connectBtn = document.getElementById('connectBtn');
+                    if (connectBtn) connectBtn.disabled = false;
+                    var usbEnabled = document.getElementById('usbEnableCheck').checked;
+                    if (usbEnabled && !bootloaderConnected) {
+                        addBootloaderLog('Auto-connecting USB HID...', 'info');
+                        setTimeout(() => connectBootloader(), 1500);
+                    }
+                } else {
+                    addBootloaderLog('Failed: '+(result.error||'Unknown'), 'error');
+                    btn.disabled = false;
+                }
+            } else { addBootloaderLog('Bootloader control not available', 'error'); btn.disabled = false; }
+        } catch(e) { addBootloaderLog('Error: '+e.message, 'error'); btn.disabled = false; }
     }
 
     async function connectBootloader() {
@@ -1509,19 +1560,25 @@
         addBootloaderLog('Starting Erase-Program-Verify sequence...','info'); setBootloaderButtonState('busy');
         try {
             addBootloaderLog('Step 1/3: Erasing...','info');
+            showFirmwareProgress('Erasing Flash...', 0, 'erase');
             const er = await window.electronAPI.bootloaderEraseFlash();
-            if (!er||!er.success) { addBootloaderLog('Erase failed: '+(er?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
+            if (!er||!er.success) { hideFirmwareProgress(); addBootloaderLog('Erase failed: '+(er?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
             addBootloaderLog('Erase complete','success');
             addBootloaderLog('Step 2/3: Programming...','info');
+            showFirmwareProgress('Programming Flash...', 0, 'program');
             const pr = await window.electronAPI.bootloaderProgramFlash();
-            if (!pr||!pr.success) { addBootloaderLog('Program failed: '+(pr?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
+            if (!pr||!pr.success) { hideFirmwareProgress(); addBootloaderLog('Program failed: '+(pr?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
             addBootloaderLog('Program complete','success');
             addBootloaderLog('Step 3/3: Verifying...','info');
+            showFirmwareProgress('Verifying...', 0, 'verify');
             const vr = await window.electronAPI.bootloaderReadCRC();
-            if (!vr||!vr.success) { addBootloaderLog('Verify failed: '+(vr?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
-            if (vr.crcMatch) { addBootloaderLog('All done — click Run Application','success'); setBootloaderButtonState('ready_to_run'); }
-            else { addBootloaderLog('CRC mismatch','error'); setBootloaderButtonState('hex_loaded'); }
-        } catch(e) { addBootloaderLog('Error: '+e.message,'error'); setBootloaderButtonState('hex_loaded'); }
+            if (!vr||!vr.success) { hideFirmwareProgress(); addBootloaderLog('Verify failed: '+(vr?.error||'Unknown'),'error'); setBootloaderButtonState('hex_loaded'); return; }
+            if (vr.crcMatch) {
+                updateFirmwareProgress('Complete!', 100);
+                setTimeout(hideFirmwareProgress, 2000);
+                addBootloaderLog('All done — click Run Application','success'); setBootloaderButtonState('ready_to_run');
+            } else { hideFirmwareProgress(); addBootloaderLog('CRC mismatch','error'); setBootloaderButtonState('hex_loaded'); }
+        } catch(e) { hideFirmwareProgress(); addBootloaderLog('Error: '+e.message,'error'); setBootloaderButtonState('hex_loaded'); }
     }
 
     async function runApplication() {
@@ -1714,29 +1771,53 @@
         if (window.electronAPI && window.electronAPI.onBootloaderProgress) {
             window.electronAPI.onBootloaderProgress(function (data) {
                 var mode = data.step==='erase'?'erase':(data.step==='verify'?'verify':'program');
-                showFirmwareProgress(data.label, mode);
+                showFirmwareProgress(data.label, data.progress, mode);
                 updateFirmwareProgress(data.label, data.progress);
                 if(data.progress>=100&&(data.step==='verify'||String(data.label).includes('completed')))
                     setTimeout(hideFirmwareProgress,3000);
             });
         }
 
+        loadAdminPIDDefaults();
+
         var proportionalInput = document.getElementById('proportionalInput');
         if (proportionalInput) {
             proportionalInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastProportionalValue&&v!=='') { lastProportionalValue=v; updatePIDStatus('proportional',false,'Sending...'); var ok=await sendAdminPIDValue('P',v); updatePIDStatus('proportional',ok,ok?'Sent':'Failed'); }
+                var v=this.value.trim(); if(v!==lastProportionalValue&&v!=='') { lastProportionalValue=v; updatePIDStatus('proportional',false,'Sending...'); var ok=await sendAdminPIDValue('P',v); if(ok) localStorage.setItem('pid-default-P',v); updatePIDStatus('proportional',ok,ok?'Saved':'Failed'); }
             });
         }
         var integralInput = document.getElementById('integralInput');
         if (integralInput) {
             integralInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastIntegralValue&&v!=='') { lastIntegralValue=v; updatePIDStatus('integral',false,'Sending...'); var ok=await sendAdminPIDValue('I',v); updatePIDStatus('integral',ok,ok?'Sent':'Failed'); }
+                var v=this.value.trim(); if(v!==lastIntegralValue&&v!=='') { lastIntegralValue=v; updatePIDStatus('integral',false,'Sending...'); var ok=await sendAdminPIDValue('I',v); if(ok) localStorage.setItem('pid-default-I',v); updatePIDStatus('integral',ok,ok?'Saved':'Failed'); }
             });
         }
         var differentialInput = document.getElementById('differentialInput');
         if (differentialInput) {
             differentialInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastDifferentialValue&&v!=='') { lastDifferentialValue=v; updatePIDStatus('differential',false,'Sending...'); var ok=await sendAdminPIDValue('D',v); updatePIDStatus('differential',ok,ok?'Sent':'Failed'); }
+                var v=this.value.trim(); if(v!==lastDifferentialValue&&v!=='') { lastDifferentialValue=v; updatePIDStatus('differential',false,'Sending...'); var ok=await sendAdminPIDValue('D',v); if(ok) localStorage.setItem('pid-default-D',v); updatePIDStatus('differential',ok,ok?'Saved':'Failed'); }
+            });
+        }
+
+        var pidRestoreDefaultsBtn = document.getElementById('pidRestoreDefaultsBtn');
+        var pidRestoreStatus = document.getElementById('pidRestoreStatus');
+        if (pidRestoreDefaultsBtn) {
+            pidRestoreDefaultsBtn.addEventListener('click', async function () {
+                var p = PID_FACTORY_DEFAULTS.P, i = PID_FACTORY_DEFAULTS.I, d = PID_FACTORY_DEFAULTS.D;
+                localStorage.setItem('pid-default-P', p);
+                localStorage.setItem('pid-default-I', i);
+                localStorage.setItem('pid-default-D', d);
+                var pIn = document.getElementById('proportionalInput');
+                var iIn = document.getElementById('integralInput');
+                var dIn = document.getElementById('differentialInput');
+                if (pIn) { pIn.value = p; lastProportionalValue = String(p); }
+                if (iIn) { iIn.value = i; lastIntegralValue = String(i); }
+                if (dIn) { dIn.value = d; lastDifferentialValue = String(d); }
+                if (pidRestoreStatus) { pidRestoreStatus.textContent = 'Restored to P='+p+', I='+i+', D='+d; setTimeout(function(){ pidRestoreStatus.textContent=''; }, 4000); }
+                await sendAdminPIDValue('P', p);
+                await sendAdminPIDValue('I', i);
+                await sendAdminPIDValue('D', d);
+                addAdminLog('PID defaults restored to factory values: P='+p+', I='+i+', D='+d, 'success');
             });
         }
     });

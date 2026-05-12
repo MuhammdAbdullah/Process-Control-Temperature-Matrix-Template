@@ -4,6 +4,14 @@ const path = require('path');
 const app = express();
 const port = 3000;
 
+// Prevent browser caching of HTML so UI changes are always visible after a normal refresh
+app.use((req, res, next) => {
+    if (req.path.endsWith('.html') || req.path === '/') {
+        res.setHeader('Cache-Control', 'no-store');
+    }
+    next();
+});
+
 // Serve static files
 app.use(express.static('.'));
 

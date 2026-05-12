@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Bootloader control
   sendBootloader: (value) => ipcRenderer.invoke('send-bootloader', value),
   connectToBootloaderUSB: (vid, pid) => ipcRenderer.invoke('connect-to-bootloader-usb', vid, pid),
+  checkBootloaderDevice: (vid, pid) => ipcRenderer.invoke('check-bootloader-device', vid, pid),
   bootloaderReadInfo: () => ipcRenderer.invoke('bootloader-read-info'),
   bootloaderEraseFlash: () => ipcRenderer.invoke('bootloader-erase-flash'),
   bootloaderProgramFlash: () => ipcRenderer.invoke('bootloader-program-flash'),
@@ -104,7 +105,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeFile: (filePath, content) => ipcRenderer.invoke('write-file', filePath, content),
   
   // Window operations
-  openAdminPanel: () => ipcRenderer.invoke('open-admin-panel'),
   sendUiDebugLog: (payload) => ipcRenderer.send('ui-debug-log', payload),
   
   // Update operations
