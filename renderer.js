@@ -3481,14 +3481,14 @@ document.addEventListener('DOMContentLoaded', function () {
             // Send current PID values to hardware when switching to PID mode
             if (window.electronAPI && window.electronAPI.sendPIDValue) {
                 try {
-                    var pValue = pidPInput ? parseFloat(pidPInput.value) : 12;
-                    var iValue = pidIInput ? parseFloat(pidIInput.value) : 0.1;
-                    var dValue = pidDInput ? parseFloat(pidDInput.value) : 220;
+                    var pValue = pidPInput ? parseFloat(pidPInput.value) : NaN;
+                    var iValue = pidIInput ? parseFloat(pidIInput.value) : NaN;
+                    var dValue = pidDInput ? parseFloat(pidDInput.value) : NaN;
                     var frequencyValue = pidFrequency ? parseFloat(pidFrequency.value) : 1.0;
-                    
-                    if (isNaN(pValue)) pValue = 12;
-                    if (isNaN(iValue)) iValue = 0.1;
-                    if (isNaN(dValue)) dValue = 220;
+
+                    if (isNaN(pValue)) pValue = parseFloat(localStorage.getItem('pid-default-P')) || 3.162;
+                    if (isNaN(iValue)) iValue = parseFloat(localStorage.getItem('pid-default-I')) || 0.01;
+                    if (isNaN(dValue)) dValue = parseFloat(localStorage.getItem('pid-default-D')) || 150;
                     if (isNaN(frequencyValue) || frequencyValue < 0.2 || frequencyValue > 1.2) frequencyValue = 1.0;
                     
                     // Send PID values and frequency to hardware
@@ -5185,6 +5185,16 @@ document.addEventListener('DOMContentLoaded', function () {
             printBothCharts();
         }
     });
+
+    // Initialize main PID inputs from saved defaults so they show correct values before any mode switch
+    try {
+        var _pidPEl = document.getElementById('pidPInput');
+        var _pidIEl = document.getElementById('pidIInput');
+        var _pidDEl = document.getElementById('pidDInput');
+        if (_pidPEl) _pidPEl.value = parseFloat(localStorage.getItem('pid-default-P')) || 3.162;
+        if (_pidIEl) _pidIEl.value = parseFloat(localStorage.getItem('pid-default-I')) || 0.01;
+        if (_pidDEl) _pidDEl.value = parseFloat(localStorage.getItem('pid-default-D')) || 150;
+    } catch (e) { /* ignore */ }
 
     // Apply saved theme/layout
     try {

@@ -264,6 +264,17 @@ For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
 ### v0.1.5 (current)
 - Bump version to 0.1.5 and remove deleted `admin.html` from build file list
+- Added **Back to Main App** button in admin tab bar for one-click return to main interface
+- Sidebar automatically hides when navigating to the admin page and restores on exit
+- PID default gains now fall back to `localStorage` values (`pid-default-P/I/D`) instead of compile-time constants; inputs pre-populated from saved defaults on startup
+- Changing PID gains in admin panel now immediately syncs values to main app PID input fields (and vice versa on Restore to Default)
+- Admin log system refactored: now uses persistent session history (`liveLogEntries`) stored in `localStorage` — logs survive page reload
+- Session tracking added to admin: sessions start/end on serial connect/disconnect, logged with port label
+- Scrollbar in admin log and raw data panels improved — wider (8 px) with higher-contrast thumb for better usability
+- Filtered high-frequency noise from system log: `QL` heartbeat packets and chart data-update events no longer appear as log entries
+- Removed redundant "Switched to X tab" log entries
+- Removed "Clear Logs" and "Reset App" buttons from admin controls panel
+- `window.switchToApp` exposed globally for cross-module navigation
 
 ### v0.1.4
 - Admin panel moved inline into main window — no longer opens as a separate Electron window

@@ -69,8 +69,11 @@
         @keyframes progressShine { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .firmware-progress-text.erasing   { color: #f39c12; }
         .firmware-progress-text.verifying { color: #3498db; }
-        .log-scroll::-webkit-scrollbar       { width: 4px; }
-        .log-scroll::-webkit-scrollbar-thumb { background: oklch(var(--bc)/0.2); border-radius: 4px; }
+        .log-scroll::-webkit-scrollbar       { width: 8px; }
+        .log-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        .log-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.4); border-radius: 4px; }
+        .log-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.7); }
+        #adminLogContainer, #rawDataContainer { height: 24rem; overflow-y: scroll; }
 
         /* ── Header: portrait phones — prevent title overflow, restore logo visibility ── */
         @media (max-width: 639px) {
@@ -644,15 +647,20 @@
 
             <!-- Admin inner tab bar -->
             <div class="bg-base-200 border-b border-base-300 px-4 flex-shrink-0">
-                <div class="flex">
-                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active"
-                            onclick="switchTab('dashboard', this)">📊 Dashboard</button>
-                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                            onclick="switchTab('pid', this)">🎛️ PID Controls</button>
-                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                            onclick="switchTab('bootloader', this)">🔧 Bootloader</button>
-                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                            onclick="switchTab('updates', this)">🔄 Updates</button>
+                <div class="flex items-center justify-between">
+                    <div class="flex">
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active"
+                                onclick="switchTab('dashboard', this)">📊 Dashboard</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
+                                onclick="switchTab('pid', this)">🎛️ PID Controls</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
+                                onclick="switchTab('bootloader', this)">🔧 Bootloader</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
+                                onclick="switchTab('updates', this)">🔄 Updates</button>
+                    </div>
+                    <button id="adminBackBtn" class="btn btn-sm btn-outline btn-primary gap-1">
+                        ← Back to Main App
+                    </button>
                 </div>
             </div>
 
@@ -686,12 +694,11 @@
                                 <div class="flex items-center justify-between">
                                     <h3 class="font-semibold text-sm">📋 System Logs</h3>
                                     <div class="flex gap-1">
-                                        <button class="btn btn-xs btn-ghost" onclick="clearLogs()">🗑️ Clear</button>
                                         <button class="btn btn-xs btn-ghost" onclick="exportLogs()">💾 Export</button>
                                     </div>
                                 </div>
                                 <div id="adminLogContainer"
-                                     class="log-scroll bg-base-300 rounded p-2 font-mono text-xs leading-relaxed h-96 overflow-y-auto">
+                                     class="log-scroll bg-base-300 rounded p-2 font-mono text-xs leading-relaxed h-96 overflow-y-scroll">
                                     <div class="log-entry">
                                         <span class="log-timestamp">[Loading...]</span>
                                         <span class="log-info"> Admin panel initialized</span>
@@ -709,7 +716,7 @@
                                     </div>
                                 </div>
                                 <div id="rawDataContainer"
-                                     class="log-scroll bg-base-300 rounded p-2 font-mono text-xs leading-relaxed h-96 overflow-y-auto">
+                                     class="log-scroll bg-base-300 rounded p-2 font-mono text-xs leading-relaxed h-96 overflow-y-scroll">
                                     <div class="raw-data-entry">
                                         <span class="log-timestamp">[Waiting for data...]</span>
                                     </div>
@@ -722,11 +729,9 @@
                         <div class="card-body p-4">
                             <h3 class="font-semibold text-sm mb-3">🛠️ Admin Controls</h3>
                             <div class="flex flex-wrap gap-2 justify-center">
-                                <button class="btn btn-sm btn-outline" onclick="clearLogs()">🗑️ Clear Logs</button>
                                 <button class="btn btn-sm btn-outline" onclick="clearRawData()">📡 Clear Raw Data</button>
                                 <button class="btn btn-sm btn-outline" onclick="exportLogs()">💾 Export Logs</button>
                                 <button class="btn btn-sm btn-outline" onclick="exportRawData()">📊 Export Raw Data</button>
-                                <button class="btn btn-sm btn-error" onclick="resetApp()">🔄 Reset App</button>
                             </div>
                         </div>
                     </div>
@@ -1182,23 +1187,156 @@
     let lastDataTime = null;
     let dataRateInterval = null;
 
+    // ── Session history ───────────────────────────────────────────
+    let currentSession = null;
+    let liveLogEntries = [];
+    const SESSION_STORAGE_KEY = 'pct-session-log';
+    const MAX_SESSIONS = 30;
+
+    function loadSessionHistory() {
+        try { return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY)) || []; } catch(e) { return []; }
+    }
+    function saveSessionHistory(sessions) {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+    }
+    function formatDuration(sec) {
+        if (sec < 60) return sec + 's';
+        var m = Math.floor(sec / 60), s = sec % 60;
+        if (m < 60) return m + 'm ' + String(s).padStart(2,'0') + 's';
+        var h = Math.floor(m / 60); m = m % 60;
+        return h + 'h ' + String(m).padStart(2,'0') + 'm';
+    }
+    function modeLabel(mode, pidType) {
+        if (mode === 'pid') return 'PID-' + (pidType || 'PID');
+        if (mode === 'onoff') return 'ON/OFF';
+        return 'MANUAL';
+    }
+    function startSession(portLabel) {
+        currentSession = {
+            startMs: Date.now(),
+            startTime: new Date().toLocaleString(),
+            port: portLabel || 'USB',
+            mode: (typeof currentControlMode !== 'undefined' ? currentControlMode : 'manual'),
+            pidType: (typeof currentChartControlType !== 'undefined' ? currentChartControlType : null),
+            startTemp: null, maxTemp: null, maxFanSpeed: 0, targetTemp: null, dataPoints: 0
+        };
+        connectionStartTime = Date.now();
+        liveLogPush('USB connected — experiment started', 'success');
+        renderSessionHistory();
+    }
+    function updateSessionData(jsonData) {
+        if (!currentSession) return;
+        if (typeof currentControlMode !== 'undefined') currentSession.mode = currentControlMode;
+        if (typeof currentChartControlType !== 'undefined' && currentChartControlType) currentSession.pidType = currentChartControlType;
+        if (jsonData.T !== undefined) {
+            var t = parseFloat(jsonData.T);
+            if (!isNaN(t)) {
+                if (currentSession.startTemp === null) currentSession.startTemp = t;
+                if (currentSession.maxTemp === null || t > currentSession.maxTemp) currentSession.maxTemp = t;
+            }
+        }
+        if (jsonData.F !== undefined) {
+            var f = parseFloat(jsonData.F);
+            if (!isNaN(f) && f > currentSession.maxFanSpeed) currentSession.maxFanSpeed = f;
+        }
+        if (typeof pidTargetTemp !== 'undefined' && currentSession.mode === 'pid') currentSession.targetTemp = pidTargetTemp;
+        else if (typeof onoffTargetTemp !== 'undefined' && currentSession.mode === 'onoff') currentSession.targetTemp = onoffTargetTemp;
+        currentSession.dataPoints++;
+        lastDataTime = Date.now();
+    }
+    function endSession() {
+        connectionStartTime = null;
+        if (!currentSession) { renderSessionHistory(); return; }
+        var durationSec = Math.round((Date.now() - currentSession.startMs) / 1000);
+        var finalMode = (typeof currentControlMode !== 'undefined' ? currentControlMode : currentSession.mode);
+        var finalPidType = (typeof currentChartControlType !== 'undefined' ? currentChartControlType : currentSession.pidType);
+        var tempRise = (currentSession.maxTemp !== null && currentSession.startTemp !== null)
+            ? +(currentSession.maxTemp - currentSession.startTemp).toFixed(1) : null;
+        var record = {
+            startTime: currentSession.startTime,
+            port: currentSession.port,
+            durationSec: durationSec,
+            mode: finalMode,
+            pidType: finalPidType,
+            startTemp: currentSession.startTemp,
+            maxTemp: currentSession.maxTemp,
+            tempRise: tempRise,
+            maxFanSpeed: currentSession.maxFanSpeed,
+            targetTemp: currentSession.targetTemp,
+            dataPoints: currentSession.dataPoints
+        };
+        var sessions = loadSessionHistory();
+        sessions.push(record);
+        if (sessions.length > MAX_SESSIONS) sessions = sessions.slice(sessions.length - MAX_SESSIONS);
+        saveSessionHistory(sessions);
+        currentSession = null;
+        liveLogPush('Experiment ended — ' + modeLabel(record.mode, record.pidType) + ' · ' + formatDuration(record.durationSec), 'info');
+        renderSessionHistory();
+    }
+    function liveLogPush(message, type) {
+        liveLogEntries.push({ time: new Date().toLocaleTimeString(), message: message, type: type || 'info' });
+        if (liveLogEntries.length > 50) liveLogEntries.shift();
+    }
+    function renderSessionHistory() {
+        var c = document.getElementById('adminLogContainer');
+        if (!c) return;
+        var sessions = loadSessionHistory();
+        var html = '';
+        if (sessions.length > 0) {
+            html += '<div style="color:rgba(255,255,255,0.3);font-size:0.65rem;padding:2px 0 4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:4px;">── EXPERIMENT HISTORY (' + sessions.length + '/' + MAX_SESSIONS + ') ──</div>';
+            sessions.forEach(function(s, i) {
+                var ml = modeLabel(s.mode, s.pidType);
+                var tempStr = (s.startTemp !== null && s.maxTemp !== null)
+                    ? s.startTemp.toFixed(1) + '→' + s.maxTemp.toFixed(1) + '°C'
+                      + (s.tempRise > 0 ? ' <span style="color:#f59e0b;">(+' + s.tempRise + '°C rise)</span>' : '')
+                    : '<span style="opacity:0.4">no temp data</span>';
+                var fanStr = s.maxFanSpeed > 0 ? 'Fan max ' + s.maxFanSpeed + '%' : 'Fan off';
+                var targetStr = s.targetTemp ? ' · Target ' + s.targetTemp + '°C' : '';
+                html += '<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">'
+                    + '<span class="log-timestamp">#' + (i+1) + ' &nbsp;' + s.startTime + '</span><br>'
+                    + '<span class="log-success" style="font-weight:bold;">' + ml + '</span>'
+                    + '&nbsp;<span class="log-info">' + formatDuration(s.durationSec) + '</span>'
+                    + ' · ' + tempStr
+                    + ' · <span class="' + (s.maxFanSpeed > 0 ? 'log-warning' : 'log-timestamp') + '">' + fanStr + '</span>'
+                    + targetStr
+                    + ' · <span class="log-timestamp">' + s.dataPoints + ' data pts</span>'
+                    + '</div>';
+            });
+        } else {
+            html += '<div class="log-timestamp" style="padding:6px 0;">No experiments recorded yet.<br>Connect USB and run an experiment — it will be logged here automatically.</div>';
+        }
+        if (currentSession) {
+            var elapsed = Math.round((Date.now() - currentSession.startMs) / 1000);
+            var inpTemp = (currentSession.startTemp !== null)
+                ? ' · ' + currentSession.startTemp.toFixed(1) + '→' + (currentSession.maxTemp !== null ? currentSession.maxTemp.toFixed(1) : currentSession.startTemp.toFixed(1)) + '°C'
+                : '';
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.15);margin-top:6px;padding-top:4px;">'
+                + '<span class="log-success">● IN PROGRESS — ' + modeLabel(currentSession.mode, currentSession.pidType)
+                + ' · ' + formatDuration(elapsed) + inpTemp
+                + ' · ' + currentSession.dataPoints + ' pts</span></div>';
+        }
+        if (liveLogEntries.length > 0) {
+            html += '<div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;padding-top:4px;color:rgba(255,255,255,0.3);font-size:0.65rem;">── APP EVENTS ──</div>';
+            liveLogEntries.forEach(function(e) {
+                html += '<div class="log-entry"><span class="log-timestamp">[' + e.time + ']</span><span class="log-' + e.type + '"> ' + e.message + '</span></div>';
+            });
+        }
+        c.innerHTML = html;
+        c.scrollTop = c.scrollHeight;
+        logCount = sessions.length;
+        updateStats();
+    }
+
     function initAdminPanel() {
         updateStats();
         startDataRateCalculation();
+        renderSessionHistory();
     }
 
-    function addAdminLog(message, type = 'info') {
-        const logContainer = document.getElementById('adminLogContainer');
-        if (!logContainer) return;
-        const timestamp = new Date().toLocaleTimeString();
-        const logEntry = document.createElement('div');
-        logEntry.className = 'log-entry';
-        logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span><span class="log-${type}"> ${message}</span>`;
-        logContainer.appendChild(logEntry);
-        logContainer.scrollTop = logContainer.scrollHeight;
-        logCount++;
-        updateStats();
-        while (logContainer.children.length > 1000) logContainer.removeChild(logContainer.firstChild);
+    function addAdminLog(message, type) {
+        type = type || 'info';
+        liveLogPush(message, type);
+        renderSessionHistory();
     }
 
     function addRawDataEntry(data, type = 'hex') {
@@ -1288,9 +1426,10 @@
     }
 
     function clearLogs() {
-        var c = document.getElementById('adminLogContainer');
-        if (!c) return;
-        c.innerHTML = `<div class="log-entry"><span class="log-timestamp">[${new Date().toLocaleTimeString()}]</span><span class="log-info"> Logs cleared</span></div>`;
+        liveLogEntries = [];
+        saveSessionHistory([]);
+        liveLogPush('Session history cleared', 'warning');
+        renderSessionHistory();
         logCount = 0; updateStats();
     }
 
@@ -1326,7 +1465,7 @@
         }
     }
 
-    function setConnectionStartTime() { connectionStartTime = Date.now(); addAdminLog('Connection established', 'success'); }
+    function setConnectionStartTime(portLabel) { if (!currentSession) startSession(portLabel); }
 
     let lastProportionalValue = '', lastIntegralValue = '', lastDifferentialValue = '';
 
@@ -1374,7 +1513,6 @@
         const tab = document.getElementById(tabName + 'Tab');
         if (tab) tab.classList.add('active');
         if (clickedButton) { clickedButton.classList.add('active', 'border-primary'); clickedButton.classList.remove('border-transparent'); }
-        addAdminLog('Switched to ' + tabName + ' tab', 'info');
     }
 
     let bootloaderConnected = false, hexFileLoaded = false, hexFilePath = '';
@@ -1725,14 +1863,20 @@
                     bootloaderConnected=false; hexFileLoaded=false;
                     if(connectBtn){connectBtn.textContent='Connect'; connectBtn.disabled=false;}
                     setBootloaderButtonState('disconnected'); addBootloaderLog('Disconnected','info');
+                } else if (status.connected && !isBootloader) {
+                    startSession(status.port || '');
+                } else if (!status.connected && !isBootloader) {
+                    endSession();
                 }
             });
         }
 
         if (window.electronAPI && window.electronAPI.onSerialTxDebug) {
             window.electronAPI.onSerialTxDebug(function (event, txData) {
-                var desc=txData&&txData.description?txData.description:'command';
                 var json=txData&&txData.json?txData.json:'';
+                // Skip QL heartbeat — too frequent, not useful in system log
+                try { var parsed = JSON.parse(json); if (parsed && parsed.QL !== undefined) { addRawDataEntry('[TX] '+json,'ascii'); return; } } catch(e) {}
+                var desc=txData&&txData.description?txData.description:'command';
                 addAdminLog('TX sent ('+desc+'): '+json,'success');
                 addRawDataEntry('[TX] '+json,'ascii');
             });
@@ -1744,7 +1888,10 @@
                 var actionType=uiData&&uiData.actionType?uiData.actionType:'action';
                 var target=uiData&&uiData.target?uiData.target:'unknown';
                 var value=uiData&&uiData.value!=null?String(uiData.value):'';
-                var msg='[UI]['+source+'] '+actionType+' on '+target;
+                // Skip high-frequency chart/data update noise
+                if (actionType === 'chart-update' || target === 'chart' || source === 'chart') return;
+                if (actionType === 'data-point' || actionType === 'tick') return;
+                var msg='['+source+'] '+actionType+' → '+target;
                 if(value!=='') msg+=' = '+value;
                 addAdminLog(msg,'info');
             });
@@ -1753,14 +1900,14 @@
         if (window.electronAPI && window.electronAPI.onDataReceived) {
             window.electronAPI.onDataReceived(function (event, data) {
                 var bytes = convertIncomingDataToByteArray(data);
-                if(bytes.length>0) { addRawDataEntry(bytes,'hex'); addAdminLog('RX packet ('+bytes.length+' bytes)','info'); }
+                if (bytes.length > 0) addRawDataEntry(bytes, 'hex');
             });
         }
 
         if (window.electronAPI && window.electronAPI.onJsonDataReceived) {
             window.electronAPI.onJsonDataReceived(function (event, jsonData) {
-                var txt = JSON.stringify(jsonData);
-                addAdminLog('RX JSON: '+txt,'info'); addRawDataEntry('[RX_JSON] '+txt,'ascii');
+                addRawDataEntry('[JSON] ' + JSON.stringify(jsonData), 'ascii');
+                updateSessionData(jsonData);
             });
         }
 
@@ -1783,19 +1930,19 @@
         var proportionalInput = document.getElementById('proportionalInput');
         if (proportionalInput) {
             proportionalInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastProportionalValue&&v!=='') { lastProportionalValue=v; updatePIDStatus('proportional',false,'Sending...'); var ok=await sendAdminPIDValue('P',v); if(ok) localStorage.setItem('pid-default-P',v); updatePIDStatus('proportional',ok,ok?'Saved':'Failed'); }
+                var v=this.value.trim(); if(v!==lastProportionalValue&&v!=='') { lastProportionalValue=v; updatePIDStatus('proportional',false,'Sending...'); var ok=await sendAdminPIDValue('P',v); if(ok) { localStorage.setItem('pid-default-P',v); var m=document.getElementById('pidPInput'); if(m) m.value=v; } updatePIDStatus('proportional',ok,ok?'Saved':'Failed'); }
             });
         }
         var integralInput = document.getElementById('integralInput');
         if (integralInput) {
             integralInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastIntegralValue&&v!=='') { lastIntegralValue=v; updatePIDStatus('integral',false,'Sending...'); var ok=await sendAdminPIDValue('I',v); if(ok) localStorage.setItem('pid-default-I',v); updatePIDStatus('integral',ok,ok?'Saved':'Failed'); }
+                var v=this.value.trim(); if(v!==lastIntegralValue&&v!=='') { lastIntegralValue=v; updatePIDStatus('integral',false,'Sending...'); var ok=await sendAdminPIDValue('I',v); if(ok) { localStorage.setItem('pid-default-I',v); var m=document.getElementById('pidIInput'); if(m) m.value=v; } updatePIDStatus('integral',ok,ok?'Saved':'Failed'); }
             });
         }
         var differentialInput = document.getElementById('differentialInput');
         if (differentialInput) {
             differentialInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastDifferentialValue&&v!=='') { lastDifferentialValue=v; updatePIDStatus('differential',false,'Sending...'); var ok=await sendAdminPIDValue('D',v); if(ok) localStorage.setItem('pid-default-D',v); updatePIDStatus('differential',ok,ok?'Saved':'Failed'); }
+                var v=this.value.trim(); if(v!==lastDifferentialValue&&v!=='') { lastDifferentialValue=v; updatePIDStatus('differential',false,'Sending...'); var ok=await sendAdminPIDValue('D',v); if(ok) { localStorage.setItem('pid-default-D',v); var m=document.getElementById('pidDInput'); if(m) m.value=v; } updatePIDStatus('differential',ok,ok?'Saved':'Failed'); }
             });
         }
 
@@ -1813,6 +1960,10 @@
                 if (pIn) { pIn.value = p; lastProportionalValue = String(p); }
                 if (iIn) { iIn.value = i; lastIntegralValue = String(i); }
                 if (dIn) { dIn.value = d; lastDifferentialValue = String(d); }
+                // Sync main app PID inputs immediately
+                var mP=document.getElementById('pidPInput'); if(mP) mP.value=p;
+                var mI=document.getElementById('pidIInput'); if(mI) mI.value=i;
+                var mD=document.getElementById('pidDInput'); if(mD) mD.value=d;
                 if (pidRestoreStatus) { pidRestoreStatus.textContent = 'Restored to P='+p+', I='+i+', D='+d; setTimeout(function(){ pidRestoreStatus.textContent=''; }, 4000); }
                 await sendAdminPIDValue('P', p);
                 await sendAdminPIDValue('I', i);
@@ -1830,6 +1981,18 @@
     var APP_DEFAULT_PAGES = { main: 'pct-main', admin: 'admin', curriculum: 'cur-intro' };
     var ALL_PAGE_IDS = ['pct-main', 'admin', 'cur-intro', 'cur-theory', 'cur-procedure', 'cur-results'];
 
+    function setSidebarVisible(visible) {
+        var sb = document.getElementById('sidebar');
+        if (!sb) return;
+        if (visible) {
+            sb.classList.remove('w-0', 'overflow-hidden');
+            sb.classList.add('w-64');
+        } else {
+            sb.classList.remove('w-64');
+            sb.classList.add('w-0', 'overflow-hidden');
+        }
+    }
+
     function showPage(pageId, adminTab) {
         ALL_PAGE_IDS.forEach(function(id) {
             var el = document.getElementById('page-' + id);
@@ -1837,6 +2000,14 @@
         });
         var target = document.getElementById('page-' + pageId);
         if (target) target.classList.remove('hidden');
+
+        // Hide sidebar in admin, restore it otherwise
+        if (pageId === 'admin') {
+            setSidebarVisible(false);
+        } else {
+            var wasCollapsed = localStorage.getItem('matrix-sidebar-collapsed') === 'true';
+            setSidebarVisible(!wasCollapsed);
+        }
 
         if (adminTab && typeof switchTab === 'function') {
             var tabBtns = document.querySelectorAll('.tab-button');
@@ -1855,6 +2026,11 @@
             if (links.length) links[0].classList.add('active');
         }
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var backBtn = document.getElementById('adminBackBtn');
+        if (backBtn) backBtn.addEventListener('click', function() { switchToApp('main'); });
+    });
 
     function switchToApp(appKey) {
         document.querySelectorAll('#app-tab-bar .tab').forEach(function(t) {
@@ -1946,6 +2122,8 @@
             switchToApp('admin');
         }, true);
     }
+
+    window.switchToApp = switchToApp;
 
     // Theme switcher (matches template pattern exactly)
     var themeSelect = document.getElementById('theme-select');
