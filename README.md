@@ -2,7 +2,7 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.5` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.6` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
@@ -262,7 +262,10 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.5 (current)
+### v0.1.6 (current)
+- Bump version to 0.1.6; full build including all v0.1.5 admin UX and PID sync improvements
+
+### v0.1.5
 - Bump version to 0.1.5 and remove deleted `admin.html` from build file list
 - Added **Back to Main App** button in admin tab bar for one-click return to main interface
 - Sidebar automatically hides when navigating to the admin page and restores on exit
