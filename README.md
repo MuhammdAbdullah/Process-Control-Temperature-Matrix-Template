@@ -2,7 +2,7 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.4` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.5` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
@@ -262,7 +262,10 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.4 (current)
+### v0.1.5 (current)
+- Bump version to 0.1.5 and remove deleted `admin.html` from build file list
+
+### v0.1.4
 - Admin panel moved inline into main window — no longer opens as a separate Electron window
 - Added **Integral Windup** toggle control in PID mode (PI sub-type only)
 - PID default gains now persist in `localStorage`; added **Restore to Default** button (`P=3.162, I=0.01, D=150`)

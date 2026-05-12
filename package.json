@@ -1,6 +1,6 @@
 {
   "name": "process-control-temperature-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Process Control Temperature - Web App for Android Tablets",
   "main": "main.js",
   "scripts": {
@@ -54,7 +54,6 @@
       "renderer.js",
       "layout.js",
       "index.html",
-      "admin.html",
       "splash.html",
       "server.js",
       "manifest.json",
