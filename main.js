@@ -736,16 +736,6 @@ app.whenReady().then(() => {
     startConnectionMonitoring();
   }, 2000); // Wait 2 seconds for splash screen
 
-  // Check for updates after app is ready (only in production)
-  setTimeout(() => {
-    if (app.isPackaged) {
-      console.log('[UPDATE] Checking for updates on startup...');
-      autoUpdater.checkForUpdatesAndNotify();
-    } else {
-      console.log('[UPDATE] Running in development mode - skipping update check');
-    }
-  }, 5000); // Wait 5 seconds after app starts
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
