@@ -2,7 +2,7 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.6` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.6` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
 
 ---
 
@@ -15,6 +15,8 @@ This app connects to a hardware temperature controller over Serial or USB HID an
 - Live dual-canvas charting (temperature + power/PID output)
 - Admin panel with logs, bootloader, and firmware update tools
 - Runs as an Electron desktop app **or** a local Express web server for tablet access
+- **Phone/tablet mirroring** — embedded web server in desktop app; scan QR code to open full UI on any device on the local network
+- Live SSE data stream — hardware data pushed to all connected browsers in real time
 
 ---
 
@@ -154,11 +156,24 @@ Incoming data arrives as two separate JSON messages per cycle:
 
 ### Web / Tablet Mode
 
-- `npm run web` serves `index.html` via Express on port 3000
+- `npm run web` serves `index.html` via Express on port 3000 with **real SerialPort integration** (no mocks)
 - Accessible from any device on the local network
 - PWA-ready (`manifest.json`) for tablet home-screen install
 - Responsive layout for touch devices
-- Falls back gracefully when Electron IPC is unavailable (uses Web Serial API where supported)
+- Falls back gracefully when Electron IPC is unavailable — browser clients use fetch/SSE via `setupServerBridge()`
+
+#### Embedded Web Server (Electron desktop — v0.1.6)
+
+When running as the desktop app, an Express server starts automatically on a free LAN port. The UI shows the server URL and a **QR code** — scan it from any phone or tablet to open the full control interface in a browser.
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/events` | GET (SSE) | Live hardware data stream (`json-data`, `connection-status`) |
+| `/api/command` | POST | Send control commands to hardware |
+| `/api/ports` | GET | List available serial ports |
+| `/api/connect` | POST | Connect to a serial port |
+| `/api/disconnect` | POST | Disconnect from hardware |
+| `/api/server-info` | GET | Network IPs, URL, QR code |
 
 ---
 
@@ -166,13 +181,20 @@ Incoming data arrives as two separate JSON messages per cycle:
 
 ```
 main.js  (Electron main process)
-  ├── SerialPort / node-hid  →  hardware communication
-  ├── ~30 IPC handlers        →  UI commands → hardware writes
-  ├── electron-updater         →  GitHub release auto-updates
-  └── preload.js               →  secure IPC bridge (context isolation)
+  ├── SerialPort / node-hid    →  hardware communication
+  ├── Embedded Express server  →  phone/tablet mirroring via SSE + REST
+  ├── ~30 IPC handlers         →  UI commands → hardware writes
+  ├── electron-updater          →  GitHub release auto-updates
+  └── preload.js                →  secure IPC bridge (context isolation)
+
+server.js  (standalone Express — npm run web)
+  ├── Real SerialPort           →  direct hardware bridge (replaces mock endpoints)
+  ├── SSE /api/events           →  pushes json-data & connection-status to browsers
+  └── REST /api/*               →  ports, connect, disconnect, command, server-info
 
 renderer.js  (Electron renderer / browser, ~6100 lines)
   ├── Chart.js (dual canvas)   →  primary (temps) + secondary (power/PID)
+  ├── setupServerBridge()      →  replaces IPC stubs with fetch/SSE when running in browser
   ├── UI state machine         →  control modes, form values, chart datasets
   └── inactivity logic         →  pauses chart after 20 min idle
 ```
@@ -263,7 +285,14 @@ For native module builds on Windows you may also need:
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
 ### v0.1.6 (current)
-- Bump version to 0.1.6; full build including all v0.1.5 admin UX and PID sync improvements
+- **Embedded web server** — Electron desktop app now starts an Express server on a free LAN port; displays URL and QR code for instant phone/tablet access
+- **SSE data stream** — hardware data (`json-data`, `connection-status`) pushed to all connected browsers via `GET /api/events` (Server-Sent Events); 20 s keep-alive ping to prevent mobile browser disconnects
+- **`server.js` fully rewritten** — replaced all mock API endpoints with real `serialport` integration; REST API for port listing, connect, disconnect, and command forwarding; shared state with SSE broadcast
+- **`setupServerBridge()`** in renderer — browser clients transparently swap Electron IPC stubs for fetch/SSE implementations so the same `renderer.js` works in both Electron and browser mode
+- **Shared control state** (`sharedState`) in `main.js` — single source of truth for control mode, fan, power, target temp, PID gains, and live sensor readings across desktop + web clients
+- **Pending-value guards** — `pendingPowerValue` / `pendingFanValue` prevent hardware echo from snapping sliders back while a command is in flight
+- External URLs (phone/tablet access URL) open in system browser via `shell.openExternal` instead of a new Electron window
+- QR code package (`qrcode`) added to dependencies
 
 ### v0.1.5
 - Bump version to 0.1.5 and remove deleted `admin.html` from build file list

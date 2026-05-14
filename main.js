@@ -1,7 +1,7 @@
 // This is the main Electron process file
 // It creates the app window and handles the main application logic
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const { SerialPort } = require('serialport');
@@ -9,6 +9,50 @@ const { exec } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const { pathToFileURL } = require('url');
 const HID = require('node-hid');
+const express = require('express');
+const http = require('http');
+const os = require('os');
+const QRCode = require('qrcode');
+
+// ── Embedded web server (phone/tablet mirroring) ───────────────────────────────
+let sseClients = [];
+let httpServer = null;
+let mainWindowReady = false;
+
+function broadcastSSE(eventName, data) {
+  const msg = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients = sseClients.filter(client => {
+    try { client.write(msg); return true; } catch { return false; }
+  });
+}
+
+// Keep-alive ping so mobile browsers don't drop the SSE connection
+setInterval(() => {
+  sseClients = sseClients.filter(client => {
+    try { client.write(': keepalive\n\n'); return true; } catch { return false; }
+  });
+}, 20000);
+
+// Single source of truth for all control positions
+const sharedState = {
+  controlMode: 1,
+  fanSpeed: 0, power: 0,
+  heaterTemp: 20, hysteresis: 1,
+  pidP: 0, pidI: 0, pidD: 0, pidHz: 0,
+  currentTemp: null, currentPower: null, currentFan: null,
+};
+
+function _applyCommandToSharedState(cmd) {
+  if (cmd.F    != null) sharedState.fanSpeed    = cmd.F;
+  if (cmd.P    != null) sharedState.power       = cmd.P;
+  if (cmd.C    != null) sharedState.controlMode = cmd.C;
+  if (cmd.T    != null) sharedState.heaterTemp  = cmd.T;
+  if (cmd.Y    != null) sharedState.hysteresis  = cmd.Y;
+  if (cmd.PID_P  != null) sharedState.pidP      = cmd.PID_P;
+  if (cmd.PID_I  != null) sharedState.pidI      = cmd.PID_I;
+  if (cmd.PID_D  != null) sharedState.pidD      = cmd.PID_D;
+  if (cmd.PID_Hz != null) sharedState.pidHz     = cmd.PID_Hz;
+}
 
 
 // Keep a global reference of the window object
@@ -91,6 +135,12 @@ function createWindow() {
 
   // Handle child windows opened with window.open() (Curriculum, Lab windows, etc.)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // External http/https links (e.g. phone/tablet URL) → open in system browser
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+
     // Check if this is the simulation window (needs specific size)
     const isSimulationWindow = url.includes('simulation.html');
 
@@ -154,6 +204,12 @@ function createWindow() {
       // Maximize the window (full window, not fullscreen)
       mainWindow.maximize();
     }, remainingTime);
+
+    // Mark renderer as ready; send stored web server URL now that listeners are live
+    mainWindowReady = true;
+    if (global._webServerUrl) {
+      mainWindow.webContents.send('web-server-url', global._webServerUrl);
+    }
   });
 
   // Handle window closed
@@ -312,6 +368,7 @@ function sendConnectionStatusToAllWindows(status) {
       }
     }
   });
+  broadcastSSE('connection-status', status);
 }
 
 // Helper function to send UI debug logs to all windows
@@ -383,6 +440,10 @@ function sendJsonDataToAllWindows(jsonData) {
       }
     }
   });
+  broadcastSSE('json-data', jsonData);
+  if (jsonData.T != null) sharedState.currentTemp  = jsonData.T;
+  if (jsonData.P != null) sharedState.currentPower = jsonData.P;
+  if (jsonData.F != null) sharedState.currentFan   = jsonData.F;
 }
 
 // Helper function to send bootloader progress to all windows
@@ -530,6 +591,142 @@ app.whenReady().then(() => {
   // Create main window
   createWindow();
 
+  // ── Start embedded web server for phone/tablet mirroring ─────────────────
+  function getRealNetworkIPs() {
+    const VIRTUAL = [/virtualbox/i, /vmware/i, /vmnet/i, /vethernet/i, /hyper-v/i, /loopback/i, /bluetooth/i, /tunnel/i, /teredo/i, /isatap/i];
+    const VIRTUAL_RANGES = ['192.168.56.', '192.168.137.'];
+    const ifaces = os.networkInterfaces();
+    const ips = [];
+    for (const [name, addrs] of Object.entries(ifaces)) {
+      if (VIRTUAL.some(p => p.test(name))) continue;
+      for (const addr of addrs) {
+        if (addr.family === 'IPv4' && !addr.internal && !VIRTUAL_RANGES.some(r => addr.address.startsWith(r))) {
+          ips.push(addr.address);
+        }
+      }
+    }
+    if (ips.length) return ips;
+    // fallback: return all non-internal IPv4 if filtering removed everything
+    return Object.values(ifaces).flat().filter(i => i.family === 'IPv4' && !i.internal).map(i => i.address);
+  }
+
+  const webApp = express();
+  webApp.use(express.json());
+  const CSP = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:;";
+  webApp.use((req, res, next) => {
+    if (req.path.endsWith('.html') || req.path === '/') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Security-Policy', CSP);
+    }
+    next();
+  });
+  webApp.use(express.static(__dirname));
+
+  webApp.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  });
+
+  webApp.get('/api/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    sseClients.push(res);
+    // Send full snapshot so new client is immediately in sync
+    res.write(`event: connection-status\ndata: ${JSON.stringify({ connected: isConnected, port: activeSerialPath })}\n\n`);
+    res.write(`event: state-update\ndata: ${JSON.stringify(sharedState)}\n\n`);
+    req.on('close', () => { sseClients = sseClients.filter(c => c !== res); });
+  });
+
+  webApp.get('/api/state', (req, res) => {
+    res.json({ ...sharedState, connected: isConnected, port: activeSerialPath });
+  });
+
+  webApp.get('/api/ports', async (req, res) => {
+    try { res.json(await SerialPort.list()); }
+    catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  webApp.get('/api/status', (req, res) => {
+    res.json({ connected: isConnected, port: activeSerialPath });
+  });
+
+  webApp.get('/api/server-info', (req, res) => {
+    if (global._webServerUrl) {
+      const { port, ips, url, qrCode } = global._webServerUrl;
+      res.json({
+        port,
+        ips,
+        urls: ips.map(ip => `http://${ip}:${port}`),
+        primaryUrl: url,
+        qrCode
+      });
+    } else {
+      const p = httpServer.address() ? httpServer.address().port : req.socket.localPort;
+      res.json({ port: p, ips: [], urls: [], primaryUrl: `http://localhost:${p}`, qrCode: null });
+    }
+  });
+
+  webApp.post('/api/connect', async (req, res) => {
+    const { port: portPath, baudRate = 115200 } = req.body || {};
+    if (!portPath) return res.status(400).json({ success: false, error: 'port is required' });
+    try {
+      const result = await connectSerial(portPath, parseInt(baudRate));
+      res.json(result);
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+  });
+
+  webApp.post('/api/disconnect', async (req, res) => {
+    try {
+      stopQlHeartbeat();
+      if (serialPort && serialPort.isOpen) {
+        await new Promise(resolve => serialPort.close(() => resolve()));
+      }
+      isConnected = false;
+      activeSerialPath = null;
+      sendConnectionStatusToAllWindows({ connected: false });
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+  });
+
+  webApp.post('/api/command', async (req, res) => {
+    const command = req.body;
+    if (!command || typeof command !== 'object' || Array.isArray(command)) {
+      return res.status(400).json({ success: false, error: 'body must be a JSON object' });
+    }
+    if (!serialPort || !serialPort.isOpen) {
+      return res.status(503).json({ success: false, error: 'Not connected to hardware' });
+    }
+    try {
+      await sendJsonCommand(command, 'web-command');
+      _applyCommandToSharedState(command);
+      broadcastSSE('state-update', sharedState);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('remote-control-update', sharedState);
+      }
+      res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+  });
+
+  httpServer = http.createServer(webApp);
+  httpServer.on('error', err => {
+    console.error('[WEB] HTTP server error:', err.message);
+  });
+  httpServer.listen(0, async () => {
+    const actualPort = httpServer.address().port;
+    const ips = getRealNetworkIPs();
+    const ip = ips[0] || 'localhost';
+    const url = `http://${ip}:${actualPort}`;
+    const qrCode = await QRCode.toDataURL(url, { width: 200 });
+    console.log(`[WEB] Phone/tablet URL: ${url}`);
+    global._webServerUrl = { url, port: actualPort, ips, qrCode };
+    // If renderer is already ready (rare: server binds after window loads), send now
+    if (mainWindowReady && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('web-server-url', global._webServerUrl);
+    }
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Auto-detect and connect to target device
   setTimeout(() => {
     autoConnectToTargetDevice();
@@ -564,6 +761,7 @@ app.on('window-all-closed', () => {
     // Clean up monitoring
     stopPortPolling();
     stopConnectionMonitoring();
+    if (httpServer) httpServer.close();
 
     app.quit();
   }
@@ -1403,6 +1601,8 @@ ipcMain.handle('send-fan-speed', async (event, value) => {
       return { success: false, error: 'Not connected' };
     }
     await sendJsonCommand({ F: v }, 'fan speed');
+    sharedState.fanSpeed = v;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1417,6 +1617,8 @@ ipcMain.handle('send-heater-temp', async (event, value) => {
       return { success: false, error: 'Not connected' };
     }
     await sendJsonCommand({ T: v }, 'heater temperature');
+    sharedState.heaterTemp = v;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1431,6 +1633,8 @@ ipcMain.handle('send-power', async (event, value) => {
       return { success: false, error: 'Not connected' };
     }
     await sendJsonCommand({ P: v }, 'power');
+    sharedState.power = v;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1445,6 +1649,8 @@ ipcMain.handle('send-control-mode', async (event, value) => {
       return { success: false, error: 'Not connected' };
     }
     await sendJsonCommand({ C: v }, 'control mode');
+    sharedState.controlMode = v;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1462,6 +1668,8 @@ ipcMain.handle('send-hysteresis', async (event, value) => {
       return { success: false, error: 'Not connected' };
     }
     await sendJsonCommand({ Y: v }, 'hysteresis');
+    sharedState.hysteresis = v;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1518,6 +1726,8 @@ ipcMain.handle('send-pid-value', async (event, type, value) => {
 
     await sendJsonCommand({ [jsonKey]: floatValue }, `PID ${type}`);
     console.log(`PID ${type} value sent: ${floatValue}`);
+    _applyCommandToSharedState({ [jsonKey]: floatValue });
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     console.error(`Error sending PID ${type}:`, e);
@@ -1539,6 +1749,8 @@ ipcMain.handle('send-pid-frequency', async (event, value) => {
 
     await sendJsonCommand({ PID_Hz: frequencyValue }, 'PID frequency');
     console.log(`PID frequency value sent: ${frequencyValue} Hz`);
+    sharedState.pidHz = frequencyValue;
+    broadcastSSE('state-update', sharedState);
     return { success: true };
   } catch (e) {
     console.error('Error sending PID frequency:', e);
@@ -3377,6 +3589,8 @@ ipcMain.handle('get-app-version', async () => {
     isPackaged: app.isPackaged
   };
 });
+
+ipcMain.handle('get-web-server-url', () => global._webServerUrl || null);
 
 // IPC handler for opening admin panel window
 

@@ -24,6 +24,12 @@ var pidTargetTemp = 20; // Default target temperature for PID mode
 var lastKnownFanSpeed = null;
 var lastKnownPower = null;
 var lastKnownTemperature = null;
+
+// Pending user-sent values — prevent hardware echo from snapping slider back
+var pendingPowerValue = null;
+var pendingPowerTimeout = null;
+var pendingFanValue = null;
+var pendingFanTimeout = null;
 var manualOverheatSafetyActive = false;
 
 // Storage for PID values from hardware (second JSON message)
@@ -747,17 +753,17 @@ function initChartForPID(controlType) {
             backgroundColor: 'transparent',
             borderWidth: 2,
             pointRadius: 0,
-            tension: 0.5,
+            tension: 0.35,
             fill: false, // No fill/shadow effect
             hidden: false  // Ensure dataset is not hidden even when empty
         });
     }
-    
+
     // Add secondary chart series (Output, P, I, D terms)
     for (var j = 0; j < secondarySeries.length; j++) {
         var series = secondarySeries[j];
         var baseColor = series.color;
-        
+
         secondaryDatasets.push({
             label: series.label,
             data: [],
@@ -765,7 +771,7 @@ function initChartForPID(controlType) {
             backgroundColor: 'transparent',
             borderWidth: 2,
             pointRadius: 0,
-            tension: 0.5,
+            tension: 0.35,
             fill: false, // No fill/shadow effect
             hidden: false  // Ensure dataset is not hidden even when empty
         });
@@ -811,10 +817,10 @@ function initChartForPID(controlType) {
                     suggestedMax: 100
                 }
             },
-            plugins: { 
-                legend: { 
-                    position: 'right', 
-                    labels: { 
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         padding: 12,
@@ -891,7 +897,7 @@ function initChartForPID(controlType) {
             },
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: 'top',
                     labels: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
@@ -1335,20 +1341,109 @@ function addToLog(message) {
 // This prevents crashes if the preload script didn't load properly
 function ensureElectronAPI() {
     if (!window.electronAPI) {
+        // Build stubs that store callbacks so setupServerBridge() can fire them later
+        var _callbacks = {};
+        function makeStore(name) {
+            _callbacks[name] = [];
+            return function (cb) { _callbacks[name].push(cb); };
+        }
         window.electronAPI = {
+            _callbacks: _callbacks,
             getAvailablePorts: async function () { return []; },
-            connectToPort: async function () { return { success: false, error: 'electronAPI unavailable' }; },
+            connectToPort: async function () { return { success: false, error: 'Not connected to server' }; },
             disconnectFromPort: async function () { return { success: true }; },
-            onDataReceived: function () { },
-            onJsonDataReceived: function () { },
-            onDataChunk: function () { },
-            onConnectionStatus: function () { },
-            onPortsUpdate: function () { },
-            removeAllListeners: function () { }
+            sendFanSpeed: async function () { return { success: false }; },
+            sendPower: async function () { return { success: false }; },
+            sendControlMode: async function () { return { success: false }; },
+            sendHysteresis: async function () { return { success: false }; },
+            sendHeaterTemp: async function () { return { success: false }; },
+            sendPIDValue: async function () { return { success: false }; },
+            sendPIDFrequency: async function () { return { success: false }; },
+            sendCustomJson: async function () { return { success: false }; },
+            onDataReceived: makeStore('data-received'),
+            onJsonDataReceived: makeStore('json-data-received'),
+            onDataChunk: makeStore('data-chunk'),
+            onConnectionStatus: makeStore('connection-status'),
+            onPortsUpdate: makeStore('ports-update'),
+            onSerialTxDebug: makeStore('serial-tx-debug'),
+            onUiDebugLog: makeStore('ui-debug-log'),
+            removeAllListeners: function () {}
         };
         return false; // Return false to indicate API was missing
     }
     return true; // Return true to indicate API is available
+}
+
+// Server bridge: replaces electronAPI stubs with real fetch/SSE implementations
+// so browsers (phone/tablet) get live hardware data via the web server.
+function setupServerBridge() {
+    addToLog('Connecting to server bridge...');
+
+    function fireCallbacks(name, data) {
+        var cbs = (window.electronAPI._callbacks || {})[name] || [];
+        cbs.forEach(function (cb) { try { cb(null, data); } catch (e) {} });
+    }
+
+    async function webCmd(commandObj) {
+        if (!isConnected) return { success: false, error: 'Hardware not connected' };
+        try {
+            var r = await fetch('/api/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(commandObj)
+            });
+            return await r.json();
+        } catch (e) { return { success: false, error: e.message }; }
+    }
+
+    // Override stubs with real server-backed implementations
+    window.electronAPI.getAvailablePorts = async function () {
+        try { var r = await fetch('/api/ports'); return await r.json(); } catch { return []; }
+    };
+    window.electronAPI.connectToPort = async function (portPath, baudRate) {
+        try {
+            var r = await fetch('/api/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port: portPath, baudRate: baudRate || 115200 })
+            });
+            return await r.json();
+        } catch (e) { return { success: false, error: e.message }; }
+    };
+    window.electronAPI.disconnectFromPort = async function () {
+        try { await fetch('/api/disconnect', { method: 'POST' }); return { success: true }; }
+        catch { return { success: true }; }
+    };
+    window.electronAPI.sendFanSpeed       = (v) => webCmd({ F: Math.max(0, Math.min(100, parseInt(v) || 0)) });
+    window.electronAPI.sendPower          = (v) => webCmd({ P: Math.max(0, Math.min(100, parseInt(v) || 0)) });
+    window.electronAPI.sendControlMode    = (v) => webCmd({ C: Math.max(1, Math.min(3, parseInt(v) || 1)) });
+    window.electronAPI.sendHysteresis     = (v) => webCmd({ Y: parseFloat(v) });
+    window.electronAPI.sendHeaterTemp     = (v) => webCmd({ T: Math.max(20, Math.min(70, parseInt(v) || 20)) });
+    window.electronAPI.sendPIDValue       = (type, value) => {
+        var key = type === 'P' ? 'PID_P' : type === 'I' ? 'PID_I' : 'PID_D';
+        return webCmd({ [key]: parseFloat(value) });
+    };
+    window.electronAPI.sendPIDFrequency   = (v) => webCmd({ PID_Hz: parseFloat(v) });
+    window.electronAPI.sendCustomJson     = (obj) => webCmd(obj);
+
+    // SSE: receive hardware data and connection events from the server
+    var es = new EventSource('/api/events');
+
+    es.addEventListener('json-data', function (e) {
+        try { fireCallbacks('json-data-received', JSON.parse(e.data)); } catch {}
+    });
+
+    es.addEventListener('connection-status', function (e) {
+        try { fireCallbacks('connection-status', JSON.parse(e.data)); } catch {}
+    });
+
+    // Mirror control positions pushed from PC app or other web clients
+    es.addEventListener('state-update', function (e) {
+        try { applyRemoteStateUpdate(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    es.onopen  = function () { addToLog('Server bridge connected — receiving live data.'); };
+    es.onerror = function () { addToLog('Server bridge disconnected, reconnecting...'); };
 }
 
 // --- Web Serial (browser) fallback ---
@@ -2413,21 +2508,25 @@ function handleJsonData(jsonData) {
         // instead of always forcing Manual. This prevents the graph from
         // jumping back to Manual right after switching to On/Off or PID.
         if (!currentChartMode) {
-            if (currentControlMode === 'onoff') {
-                initChartForOnOff();
-            } else if (currentControlMode === 'pid') {
-                // Use current PID control type if available, otherwise default to 'PID'
-                var pidControlTypeSelect = document.getElementById('pidControlType');
-                var controlType = pidControlTypeSelect ? pidControlTypeSelect.value : 'PID';
-                initChartForPID(controlType);
-            } else {
-                // Fallback: Manual mode (only if not in On/Off mode)
-                if (currentControlMode !== 'onoff') {
-                    currentControlMode = 'manual';
-                    initChartForManual();
-                } else {
+            try {
+                if (currentControlMode === 'onoff') {
                     initChartForOnOff();
+                } else if (currentControlMode === 'pid') {
+                    // Use current PID control type if available, otherwise default to 'PID'
+                    var pidControlTypeSelect = document.getElementById('pidControlType');
+                    var controlType = pidControlTypeSelect ? pidControlTypeSelect.value : 'PID';
+                    initChartForPID(controlType);
+                } else {
+                    // Fallback: Manual mode (only if not in On/Off mode)
+                    if (currentControlMode !== 'onoff') {
+                        currentControlMode = 'manual';
+                        initChartForManual();
+                    } else {
+                        initChartForOnOff();
+                    }
                 }
+            } catch (chartInitErr) {
+                addToLog('Chart init error: ' + (chartInitErr.message || chartInitErr));
             }
         }
         
@@ -2533,7 +2632,16 @@ function handleJsonData(jsonData) {
             // Only update the UI when the received value actually changes.
             var powerSliderElement = document.getElementById('powerSlider');
             var currentPowerSliderValue = powerSliderElement ? parseInt(powerSliderElement.value, 10) : NaN;
-            if (isNaN(currentPowerSliderValue) || currentPowerSliderValue !== powerFromJson) {
+
+            // If a user command is in-flight, skip hardware echo unless it confirms our value.
+            if (pendingPowerValue !== null) {
+                if (powerFromJson === pendingPowerValue) {
+                    clearTimeout(pendingPowerTimeout);
+                    pendingPowerValue = null;
+                }
+            }
+
+            if ((pendingPowerValue === null) && (isNaN(currentPowerSliderValue) || currentPowerSliderValue !== powerFromJson)) {
                 var powerDisplayElement = document.getElementById('powerDisplay');
                 var powerTooltipElement = document.getElementById('powerTooltip');
                 var powerSliderFillElement = document.getElementById('powerSliderFill');
@@ -2581,8 +2689,15 @@ function handleJsonData(jsonData) {
 
         // Update fan speed if provided in JSON - ONLY if value has changed
         if (typeof fanSpeed === 'number' && !isNaN(fanSpeed) && fanSpeed >= 0 && fanSpeed <= 100) {
-            // Only update UI if the value has actually changed
-            if (fanSpeed !== lastKnownFanSpeed) {
+            // If a user command is in-flight, skip hardware echo unless it confirms our value.
+            if (pendingFanValue !== null) {
+                if (fanSpeed === pendingFanValue) {
+                    clearTimeout(pendingFanTimeout);
+                    pendingFanValue = null;
+                }
+            }
+            // Only update UI if no pending command and the value has actually changed
+            if (pendingFanValue === null && fanSpeed !== lastKnownFanSpeed) {
                 lastKnownFanSpeed = fanSpeed;
                 if (fanSpeedInput) {
                     fanSpeedInput.value = fanSpeed;
@@ -2813,6 +2928,30 @@ function setupDataListeners() {
             }
         }
     });
+
+    // Mirror state changes pushed from phone/tablet clients
+    if (window.electronAPI.onRemoteControlUpdate) {
+        window.electronAPI.onRemoteControlUpdate(function (event, state) {
+            applyRemoteStateUpdate(state);
+        });
+    }
+
+    // Show the local web server URL once the embedded server is listening
+    if (window.electronAPI.onWebServerUrl) {
+        window.electronAPI.onWebServerUrl(function (event, info) {
+            populateRemoteAccessCard(info);
+            addToLog('[WEB] Remote access URL: ' + info.url);
+        });
+    }
+}
+
+function populateRemoteAccessCard(info) {
+    var urlEl = document.getElementById('webServerUrl');
+    var ipEl = document.getElementById('webServerIp');
+    var qrEl = document.getElementById('webServerQr');
+    if (urlEl) { urlEl.textContent = info.url; urlEl.href = info.url; }
+    if (ipEl && info.ips && info.ips.length) { ipEl.textContent = info.ips.join(', '); }
+    if (qrEl && info.qrCode) { qrEl.src = info.qrCode; qrEl.classList.remove('hidden'); }
 }
 
 function setupUiActionLogging() {
@@ -2890,8 +3029,8 @@ document.addEventListener('DOMContentLoaded', function () {
     addToLog('Process Control Temperature started');
 
     if (!apiAvailable) {
-        addToLog('Warning: electronAPI bridge not found. Running in limited mode.');
-        addToLog('Make sure preload.js is loading correctly.');
+        // Wire up real server API before setupDataListeners registers its callbacks
+        setupServerBridge();
     }
 
     setupUiActionLogging();
@@ -2913,6 +3052,20 @@ document.addEventListener('DOMContentLoaded', function () {
     setupPidFanSliderHandler();
 
     setupDataListeners();
+
+    // Electron mode: actively poll for web server URL until it arrives
+    // (the IPC event may already have fired before listeners were registered)
+    if (apiAvailable && window.electronAPI.getWebServerUrl) {
+        (function pollWebServerUrl(attemptsLeft) {
+            window.electronAPI.getWebServerUrl().then(function(info) {
+                if (info) {
+                    populateRemoteAccessCard(info);
+                } else if (attemptsLeft > 0) {
+                    setTimeout(function() { pollWebServerUrl(attemptsLeft - 1); }, 500);
+                }
+            }).catch(function() {});
+        })(20); // up to 20 × 500 ms = 10 s
+    }
 
     // Setup clear/save controls
     var clearDataBtn = document.getElementById('clearDataBtn');
@@ -3067,13 +3220,9 @@ document.addEventListener('DOMContentLoaded', function () {
     updateChartTheme();
     window.electronAPI.onPortsUpdate(handlePortsUpdateFromMain);
     refreshComPorts();
-    // Web Serial: show connect button and try auto-connect to previously authorized port
-    if (!apiAvailable) {
-        if (webConnectBtn) {
-            webConnectBtn.style.display = 'inline-block';
-            webConnectBtn.addEventListener('click', requestWebSerialOnce);
-        }
-        tryWebSerialAutoConnect();
+    // Server bridge handles hardware in web mode — Web Serial not needed
+    if (!apiAvailable && webConnectBtn) {
+        webConnectBtn.style.display = 'none';
     }
 
 
@@ -3728,6 +3877,10 @@ document.addEventListener('DOMContentLoaded', function () {
     async function setPower(powerPercent) {
         markUserControlActivity();
         powerPercent = Math.max(0, Math.min(100, powerPercent));
+
+        pendingPowerValue = powerPercent;
+        if (pendingPowerTimeout) clearTimeout(pendingPowerTimeout);
+        pendingPowerTimeout = setTimeout(function () { pendingPowerValue = null; }, 2500);
 
         // Update UI - slider, text box, and fill
         if (powerSlider) powerSlider.value = powerPercent;
@@ -5399,6 +5552,9 @@ if (fanSpeedInput) {
         try {
             var v = parseInt(fanSpeedInput.value, 10);
             markUserControlActivity();
+            pendingFanValue = v;
+            if (pendingFanTimeout) clearTimeout(pendingFanTimeout);
+            pendingFanTimeout = setTimeout(function () { pendingFanValue = null; }, 2500);
             // Update button states when slider changes
             updateFanButtons(v);
             var result = await window.electronAPI.sendFanSpeed(v);
@@ -5636,5 +5792,109 @@ window.addEventListener('beforeunload', function () {
         });
     }
 });
+
+// applyRemoteStateUpdate — mirror control positions from a remote client.
+// Writes directly to DOM .value — does NOT call sendXxx() — no re-broadcast loop.
+function applyRemoteStateUpdate(state) {
+    if (!state) return;
+
+    // Fan speed (shared across modes)
+    if (typeof state.fanSpeed === 'number') {
+        var fs = state.fanSpeed;
+        // Manual mode fan
+        if (fanSpeedInput && parseInt(fanSpeedInput.value, 10) !== fs) {
+            fanSpeedInput.value = fs;
+            lastKnownFanSpeed = fs;
+            if (typeof updateSliderFill === 'function') updateSliderFill(fs);
+            if (typeof updateFanIcon === 'function') updateFanIcon(fs);
+            if (typeof updateFanButtons === 'function') updateFanButtons(fs);
+        }
+        var fanDisplay = document.getElementById('fanSpeedDisplay');
+        if (fanDisplay && document.activeElement !== fanDisplay) fanDisplay.value = fs;
+        // On/Off mode fan
+        var onoffFan = document.getElementById('onoffFanSpeed');
+        if (onoffFan && parseInt(onoffFan.value, 10) !== fs) onoffFan.value = fs;
+        // PID mode fan
+        var pidFan = document.getElementById('pidFanSpeed');
+        if (pidFan && parseInt(pidFan.value, 10) !== fs) pidFan.value = fs;
+    }
+
+    // Power slider (manual mode)
+    if (typeof state.power === 'number') {
+        var pw = state.power;
+        var pSlider = document.getElementById('powerSlider');
+        if (pSlider && parseInt(pSlider.value, 10) !== pw) {
+            pSlider.value = pw;
+            lastKnownPower = pw;
+        }
+        var pDisplay = document.getElementById('powerDisplay');
+        if (pDisplay && document.activeElement !== pDisplay) pDisplay.value = pw;
+    }
+
+    // Heater / target temperature
+    if (typeof state.heaterTemp === 'number') {
+        var ht = state.heaterTemp;
+        // Manual mode heater slider
+        if (heaterTempInput && parseInt(heaterTempInput.value, 10) !== ht) {
+            heaterTempInput.value = ht;
+            if (typeof updateHeaterSliderFill === 'function') updateHeaterSliderFill(ht);
+            if (typeof updateHeaterIcon === 'function') updateHeaterIcon(ht);
+        }
+        var htDisplay = document.getElementById('heaterTempValue');
+        if (htDisplay && document.activeElement !== htDisplay) htDisplay.value = ht;
+        // On/Off mode target
+        var ooSlider = document.getElementById('onoffTargetSlider');
+        if (ooSlider && parseInt(ooSlider.value, 10) !== ht) ooSlider.value = ht;
+        var ooDisplay = document.getElementById('onoffTargetDisplay');
+        if (ooDisplay && document.activeElement !== ooDisplay) ooDisplay.value = ht;
+        if (typeof onoffTargetTemp !== 'undefined') onoffTargetTemp = ht;
+        // PID mode target
+        var pidSlider = document.getElementById('pidTargetSlider');
+        if (pidSlider && parseInt(pidSlider.value, 10) !== ht) pidSlider.value = ht;
+        var pidDisplay = document.getElementById('pidTargetDisplay');
+        if (pidDisplay && document.activeElement !== pidDisplay) pidDisplay.value = ht;
+        if (typeof pidTargetTemp !== 'undefined') pidTargetTemp = ht;
+    }
+
+    // Hysteresis
+    if (typeof state.hysteresis === 'number') {
+        var hyEl = document.getElementById('onoffHysteresis');
+        if (hyEl && document.activeElement !== hyEl) {
+            hyEl.value = state.hysteresis;
+            if (typeof onoffHysteresisValue !== 'undefined') onoffHysteresisValue = state.hysteresis;
+        }
+    }
+
+    // PID gains
+    if (typeof state.pidP === 'number') {
+        var ppEl = document.getElementById('pidPInput');
+        if (ppEl && document.activeElement !== ppEl) ppEl.value = state.pidP;
+    }
+    if (typeof state.pidI === 'number') {
+        var piEl = document.getElementById('pidIInput');
+        if (piEl && document.activeElement !== piEl) piEl.value = state.pidI;
+    }
+    if (typeof state.pidD === 'number') {
+        var pdEl = document.getElementById('pidDInput');
+        if (pdEl && document.activeElement !== pdEl) pdEl.value = state.pidD;
+    }
+
+    // Control mode panel switch (no hardware send, no chart reinit)
+    if (typeof state.controlMode === 'number') {
+        var modeMap = { 1: 'manual', 2: 'onoff', 3: 'pid' };
+        var newMode = modeMap[state.controlMode];
+        if (newMode && newMode !== currentControlMode) {
+            currentControlMode = newMode;
+            var modeSelect = document.getElementById('controlModeSelect');
+            if (modeSelect) modeSelect.value = newMode;
+            var manualPanel = document.getElementById('manualControlMode');
+            var onoffPanel  = document.getElementById('onoffControlMode');
+            var pidPanel    = document.getElementById('pidControlMode');
+            if (manualPanel) manualPanel.style.display = (newMode === 'manual') ? '' : 'none';
+            if (onoffPanel)  onoffPanel.style.display  = (newMode === 'onoff')  ? '' : 'none';
+            if (pidPanel)    pidPanel.style.display    = (newMode === 'pid')    ? '' : 'none';
+        }
+    }
+}
 
 

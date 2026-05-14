@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdn.jsdelivr.net; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Process Control Temperature</title>
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
@@ -123,10 +123,10 @@
             flex-direction: column;
             overflow: visible;
             min-height: auto;
+            flex: none;          /* prevent flex-1 shrink-to-fit — enables layout overflow so #main-content can scroll */
         }
         #main-content {
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: visible;
             touch-action: pan-y;
             -webkit-overflow-scrolling: touch;
         }
@@ -156,7 +156,7 @@
         /* ── Tablet+ (768px+): side-by-side, dynamic chart heights ── */
         @media (min-width: 768px) {
             #main-content { overflow: hidden; }
-            #page-pct-main { flex-direction: row; overflow: hidden; }
+            #page-pct-main { flex-direction: row; overflow: hidden; flex: 1; }
             #page-pct-main > aside {
                 order: 9999;
                 width: 35%;
@@ -174,7 +174,7 @@
         @media (min-width: 1280px) { #page-pct-main > aside { width: 25%; } }
     </style>
 </head>
-<body class="min-h-screen bg-base-100 flex flex-col overflow-hidden">
+<body class="min-h-screen bg-base-100 flex flex-col md:overflow-hidden">
 
 <!-- ═══════════════════════════════════════════════════════════
      HEADER / NAVBAR
@@ -238,7 +238,7 @@
 <!-- ═══════════════════════════════════════════════════════════
      BODY  (sidebar + main content)
 ════════════════════════════════════════════════════════════════ -->
-<div class="flex flex-1 overflow-hidden relative">
+<div class="flex flex-1 md:overflow-hidden relative">
 
     <!-- Mobile backdrop -->
     <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-40 hidden"></div>
@@ -669,24 +669,6 @@
 
                 <!-- DASHBOARD TAB -->
                 <div id="dashboardTab" class="tab-content active space-y-4">
-                    <div class="stats stats-horizontal shadow w-full bg-base-200 flex-wrap">
-                        <div class="stat py-3">
-                            <div class="stat-title text-xs">Total Log Entries</div>
-                            <div class="stat-value text-xl font-mono" id="totalLogs">0</div>
-                        </div>
-                        <div class="stat py-3">
-                            <div class="stat-title text-xs">Raw Data Packets</div>
-                            <div class="stat-value text-xl font-mono" id="totalRawData">0</div>
-                        </div>
-                        <div class="stat py-3">
-                            <div class="stat-title text-xs">Connection Uptime</div>
-                            <div class="stat-value text-xl font-mono tabular-nums" id="connectionUptime">00:00:00</div>
-                        </div>
-                        <div class="stat py-3">
-                            <div class="stat-title text-xs">Data Rate (pkts/min)</div>
-                            <div class="stat-value text-xl font-mono" id="dataRate">0</div>
-                        </div>
-                    </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="card bg-base-200 shadow">
@@ -725,13 +707,19 @@
                         </div>
                     </div>
 
-                    <div class="card bg-base-200 shadow">
+                    <div id="remoteAccessCard" class="card bg-base-200 shadow">
                         <div class="card-body p-4">
-                            <h3 class="font-semibold text-sm mb-3">🛠️ Admin Controls</h3>
-                            <div class="flex flex-wrap gap-2 justify-center">
-                                <button class="btn btn-sm btn-outline" onclick="clearRawData()">📡 Clear Raw Data</button>
-                                <button class="btn btn-sm btn-outline" onclick="exportLogs()">💾 Export Logs</button>
-                                <button class="btn btn-sm btn-outline" onclick="exportRawData()">📊 Export Raw Data</button>
+                            <h3 class="font-semibold text-sm mb-1">📱 Remote Access (Phone / Tablet)</h3>
+                            <p class="text-xs opacity-60 mb-3">Scan the QR code or open the URL on any device on the same Wi-Fi:</p>
+                            <div class="flex flex-row items-center gap-4">
+                                <img id="webServerQr" src="" alt="QR Code" class="w-32 h-32 hidden rounded" />
+                                <div class="flex flex-col gap-1">
+                                    <span class="text-xs opacity-60">IP Address:</span>
+                                    <span id="webServerIp" class="font-mono text-sm font-semibold">—</span>
+                                    <span class="text-xs opacity-60 mt-1">URL:</span>
+                                    <a id="webServerUrl" href="#" target="_blank"
+                                       class="font-mono text-primary text-sm break-all">Waiting for server…</a>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1177,7 +1165,7 @@
 ════════════════════════════════════════════════════════════════ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="layout.js"></script>
-<script src="renderer.js?v=2" charset="utf-8"></script>
+<script src="renderer.js?v=3" charset="utf-8"></script>
 
 <!-- Admin panel logic (ported from admin.html) -->
 <script>
@@ -2030,6 +2018,12 @@
     document.addEventListener('DOMContentLoaded', function() {
         var backBtn = document.getElementById('adminBackBtn');
         if (backBtn) backBtn.addEventListener('click', function() { switchToApp('main'); });
+
+        // Remote Access card is only meaningful on the PC app (Electron)
+        if (!navigator.userAgent.includes('Electron')) {
+            var card = document.getElementById('remoteAccessCard');
+            if (card) card.style.display = 'none';
+        }
     });
 
     function switchToApp(appKey) {
@@ -2139,6 +2133,7 @@
         });
     }
 })();
+
 </script>
 
 </body>

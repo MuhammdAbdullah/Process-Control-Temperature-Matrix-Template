@@ -111,6 +111,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   
+  // Remote mirroring — fired when a phone/tablet changes a control
+  onRemoteControlUpdate: (callback) => {
+    ipcRenderer.on('remote-control-update', callback);
+  },
+  // Fired once the embedded web server is listening — sends { url, port }
+  onWebServerUrl: (callback) => {
+    ipcRenderer.on('web-server-url', callback);
+  },
+  // Actively request the current web server URL (works even if the event already fired)
+  getWebServerUrl: () => ipcRenderer.invoke('get-web-server-url'),
+
   // Remove listeners to prevent memory leaks
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);
