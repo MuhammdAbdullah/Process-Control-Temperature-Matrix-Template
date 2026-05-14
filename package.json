@@ -67,7 +67,8 @@
     "buildDependenciesFromSource": false,
     "win": {
       "target": "nsis",
-      "icon": "icon.ico"
+      "icon": "icon.ico",
+      "artifactName": "Process-Control-Temperature-App-Setup-${version}.${ext}"
     }
   }
 }
