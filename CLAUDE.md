@@ -22,7 +22,7 @@ No test suite exists. Minimum Node.js version: 16+.
 
 ## Architecture
 
-This is an **Electron desktop app** (v0.1.2) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
+This is an **Electron desktop app** (v0.1.7, Electron 38) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
 
 ### Process Boundary
 
@@ -30,6 +30,7 @@ This is an **Electron desktop app** (v0.1.2) for laboratory temperature process 
 main.js (Electron main process)
   ├── SerialPort / node-hid  →  hardware communication
   ├── ~30 IPC handlers        →  UI commands → hardware writes
+  ├── Embedded Express server →  SSE + REST bridge for web browsers (see below)
   ├── electron-updater         →  GitHub release auto-updates
   └── preload.js               →  secure IPC bridge (context isolation)
 
@@ -151,4 +152,38 @@ Do not skip these sequences when modifying connection/disconnect or mode-switch 
 
 ### Dual-Mode Deployment
 
-The `server.js` Express server serves `index.html` for tablet use. IPC calls are unavailable in this mode — any new hardware communication features added via IPC must have a graceful fallback or be gated on `window.electronAPI` availability.
+There are **two independent web server implementations** — do not confuse them:
+
+- **`server.js`** — standalone Express server (`npm run web`). Has its own `SerialPort` instance, auto-connects to the target device (`VID=0x12BF, PID=0x0113`) on startup, and serves `index.html` directly. No shared state with Electron.
+- **Embedded server in `main.js`** — runs alongside the Electron window to mirror hardware state to tablet browsers via QR code. Uses SSE at `/api/events` and a `sharedState` object as the single source of truth; calls `broadcastSSE('state-update', sharedState)` whenever hardware data arrives.
+
+Embedded server REST endpoints (inside `main.js`):
+```
+GET  /api/state        →  returns sharedState + connection info
+GET  /api/ports        →  lists available serial ports
+GET  /api/server-info  →  returns network IPs + QR code as Data URL
+POST /api/connect      →  connect to serial port from web
+POST /api/disconnect   →  disconnect from web
+POST /api/command      →  send JSON command from web
+GET  /api/events       →  SSE stream (connection-status, state-update)
+```
+
+IPC calls are unavailable in web mode — any new hardware communication features added via IPC must have a graceful fallback or be gated on `window.electronAPI` availability.
+
+### Hardware Keepalive
+
+When connected, both `main.js` and `server.js` send a heartbeat poll to the hardware every **900ms** to detect disconnects. `main.js` tracks consecutive heartbeat failures and triggers a disconnect/reconnect sequence after threshold. Do not remove or bypass the heartbeat when editing connection logic.
+
+### renderer.js Additional State
+
+```js
+localStorage['temp-unit']   // 'C' | 'F' — persists temperature unit preference
+pendingPowerValue            // debounce buffer — echoed slider values, not yet confirmed
+pendingFanValue              // same for fan
+```
+
+### Build & Release
+
+GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags, uses Node 20, runs `npm run build-win` only, and uploads the `.exe`, `.exe.blockmap`, and `latest.yml` to a GitHub Release. The published repo is `MuhammdAbdullah/Process-Control-Temperature-Matrix-Template`.
+
+`scripts/ensure-utf8.js` runs automatically before `npm start` (`prestart` hook) — it walks all `.html`/`.js`/`.css`/`.json` files and converts any UTF-16 files to UTF-8. This guards against PowerShell's default UTF-16 encoding corrupting source files on Windows.

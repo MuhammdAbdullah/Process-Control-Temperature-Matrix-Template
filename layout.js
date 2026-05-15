@@ -73,15 +73,16 @@
     function updateSetPoint() {
         if (!setPointEl) return;
         const mode = modeSelect ? modeSelect.value : 'manual';
+        const unit = (typeof currentTempUnit !== 'undefined' && currentTempUnit === 'F') ? '°F' : '°C';
 
         if (mode === 'manual') {
-            setPointEl.textContent = '-- °C';
+            setPointEl.textContent = '-- ' + unit;
             return;
         }
 
         const slider = targetSliders[mode];
         if (slider) {
-            setPointEl.textContent = `${slider.value} °C`;
+            setPointEl.textContent = `${slider.value} ${unit}`;
         }
     }
 

@@ -228,7 +228,7 @@
 <!-- ═══════════════════════════════════════════════════════════
      TOP APP TAB BAR
 ════════════════════════════════════════════════════════════════ -->
-<div class="bg-base-200 border-b border-base-300 flex-shrink-0 px-2 py-1">
+<div id="top-tab-bar-container" class="bg-base-200 border-b border-base-300 flex-shrink-0 px-2 py-1">
     <div class="tabs tabs-boxed bg-transparent gap-1" id="app-tab-bar">
         <button class="tab tab-active font-semibold" data-app="main">🌡️ Main App</button>
         <button class="tab font-semibold" data-app="curriculum">📚 Curriculum</button>
@@ -270,7 +270,7 @@
                         HMI Dashboard
                     </span>
                 </li>
-                <li><a href="#" data-page="pct-main" class="sidebar-link active">Process Control Temperature</a></li>
+                <li class="hidden"><a href="#" data-page="pct-main" class="sidebar-link active">Process Control Temperature</a></li>
 
                 <li id="errorMenuWrapper" class="hidden">
                     <details id="errorMenuDetails">
@@ -345,7 +345,7 @@
                         <div class="text-xs font-bold tracking-widest uppercase opacity-50">Heater Temperature</div>
                         <div class="font-mono font-extrabold tracking-tight tabular-nums" style="font-size: 64px; line-height: 1;">
                             <span id="heaterTempBig">--.-</span
-                            ><span class="font-extrabold" style="font-size: 64px;">°C</span>
+                            ><span class="font-extrabold temp-unit-suffix" style="font-size: 64px;">°C</span>
                         </div>
                         <div class="divider my-1"></div>
                         <div class="flex items-center justify-center gap-2">
@@ -436,6 +436,7 @@
                                 <button id="onoffTarget0"   class="join-item btn btn-xs btn-outline flex-1 heater-btn active">20°C</button>
                                 <button id="onoffTarget50"  class="join-item btn btn-xs btn-outline flex-1 heater-btn">50°C</button>
                                 <button id="onoffTarget100" class="join-item btn btn-xs btn-outline flex-1 heater-btn">70°C</button>
+                                <!-- button labels updated dynamically by updateTempUnitUI() -->
                             </div>
                             <div class="flex items-center gap-3">
                                 <div class="flex-1 relative">
@@ -447,7 +448,7 @@
                                     <input type="number" id="onoffTargetDisplay" min="20" max="70" value="20" step="1"
                                            class="input input-bordered input-sm w-16 text-center font-mono tabular-nums
                                                   [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
-                                    <span class="text-sm font-bold opacity-60">°C</span>
+                                    <span class="text-sm font-bold opacity-60 temp-unit-suffix">°C</span>
                                 </div>
                             </div>
                             <div class="flex items-center gap-3">
@@ -501,6 +502,7 @@
                                 <button id="pidTarget0"   class="join-item btn btn-xs btn-outline flex-1 heater-btn active">20°C</button>
                                 <button id="pidTarget50"  class="join-item btn btn-xs btn-outline flex-1 heater-btn">50°C</button>
                                 <button id="pidTarget100" class="join-item btn btn-xs btn-outline flex-1 heater-btn">70°C</button>
+                                <!-- button labels updated dynamically by updateTempUnitUI() -->
                             </div>
                             <div class="flex items-center gap-3">
                                 <div class="flex-1 relative">
@@ -512,7 +514,7 @@
                                     <input type="number" id="pidTargetDisplay" min="20" max="70" value="20" step="1"
                                            class="input input-bordered input-sm w-16 text-center font-mono tabular-nums
                                                   [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
-                                    <span class="text-sm font-bold opacity-60">°C</span>
+                                    <span class="text-sm font-bold opacity-60 temp-unit-suffix">°C</span>
                                 </div>
                             </div>
                         </div>
@@ -647,7 +649,10 @@
 
             <!-- Admin inner tab bar -->
             <div class="bg-base-200 border-b border-base-300 px-4 flex-shrink-0">
-                <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button id="adminBackBtn" class="btn btn-sm btn-primary gap-1 flex-shrink-0">
+                        ← Main App
+                    </button>
                     <div class="flex">
                         <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active"
                                 onclick="switchTab('dashboard', this)">📊 Dashboard</button>
@@ -657,10 +662,9 @@
                                 onclick="switchTab('bootloader', this)">🔧 Bootloader</button>
                         <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
                                 onclick="switchTab('updates', this)">🔄 Updates</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
+                                onclick="switchTab('settings', this)">⚙️ Settings</button>
                     </div>
-                    <button id="adminBackBtn" class="btn btn-sm btn-outline btn-primary gap-1">
-                        ← Back to Main App
-                    </button>
                 </div>
             </div>
 
@@ -876,6 +880,40 @@
                         </div>
                     </div>
                 </div><!-- /updatesTab -->
+
+                <!-- SETTINGS TAB -->
+                <div id="settingsTab" class="tab-content">
+                    <div class="card bg-base-200 shadow max-w-sm">
+                        <div class="card-body gap-4">
+                            <h2 class="card-title text-base border-b border-success pb-3">🌡️ Temperature Unit</h2>
+                            <p class="text-xs text-base-content/60">
+                                Select the unit used for all temperature displays, sliders, and charts.
+                                The hardware will be commanded to send sensor data in the selected unit.
+                            </p>
+                            <div class="flex flex-col gap-3">
+                                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
+                                    <input type="radio" name="tempUnit" value="C" class="radio radio-primary"
+                                           onchange="setTemperatureUnit(this.value)">
+                                    <div>
+                                        <div class="font-semibold text-sm">Celsius (°C)</div>
+                                        <div class="text-xs opacity-60">Range: 20 °C – 70 °C</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
+                                    <input type="radio" name="tempUnit" value="F" class="radio radio-primary"
+                                           onchange="setTemperatureUnit(this.value)">
+                                    <div>
+                                        <div class="font-semibold text-sm">Fahrenheit (°F)</div>
+                                        <div class="text-xs opacity-60">Range: 68 °F – 158 °F</div>
+                                    </div>
+                                </label>
+                            </div>
+                            <p class="text-xs text-base-content/50">
+                                This setting is saved and applied automatically each time you connect to hardware.
+                            </p>
+                        </div>
+                    </div>
+                </div><!-- /settingsTab -->
 
             </div><!-- /admin scroll wrapper -->
         </div><!-- /page-admin -->
@@ -1460,9 +1498,9 @@
     const PID_FACTORY_DEFAULTS = { P: 3.162, I: 0.01, D: 150 };
 
     function loadAdminPIDDefaults() {
-        var pVal = localStorage.getItem('pid-default-P');
-        var iVal = localStorage.getItem('pid-default-I');
-        var dVal = localStorage.getItem('pid-default-D');
+        var pVal = localStorage.getItem('admin-pid-P');
+        var iVal = localStorage.getItem('admin-pid-I');
+        var dVal = localStorage.getItem('admin-pid-D');
         var p = pVal !== null ? parseFloat(pVal) : PID_FACTORY_DEFAULTS.P;
         var i = iVal !== null ? parseFloat(iVal) : PID_FACTORY_DEFAULTS.I;
         var d = dVal !== null ? parseFloat(dVal) : PID_FACTORY_DEFAULTS.D;
@@ -1570,14 +1608,9 @@
             if (window.electronAPI && window.electronAPI.sendBootloader) {
                 const result = await window.electronAPI.sendBootloader(1);
                 if (result.success) {
-                    addBootloaderLog('Bootloader command sent — waiting for device...', 'info');
+                    addBootloaderLog('Bootloader command sent — click Connect when device is ready.', 'info');
                     var connectBtn = document.getElementById('connectBtn');
                     if (connectBtn) connectBtn.disabled = false;
-                    var usbEnabled = document.getElementById('usbEnableCheck').checked;
-                    if (usbEnabled && !bootloaderConnected) {
-                        addBootloaderLog('Auto-connecting USB HID...', 'info');
-                        setTimeout(() => connectBootloader(), 1500);
-                    }
                 } else {
                     addBootloaderLog('Failed: '+(result.error||'Unknown'), 'error');
                     btn.disabled = false;
@@ -1918,44 +1951,64 @@
         var proportionalInput = document.getElementById('proportionalInput');
         if (proportionalInput) {
             proportionalInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastProportionalValue&&v!=='') { lastProportionalValue=v; updatePIDStatus('proportional',false,'Sending...'); var ok=await sendAdminPIDValue('P',v); if(ok) { localStorage.setItem('pid-default-P',v); var m=document.getElementById('pidPInput'); if(m) m.value=v; } updatePIDStatus('proportional',ok,ok?'Saved':'Failed'); }
+                var v = this.value.trim();
+                if (v !== lastProportionalValue && v !== '') {
+                    lastProportionalValue = v;
+                    localStorage.setItem('admin-pid-P', v);
+                    try {
+                        if (window.electronAPI && window.electronAPI.sendCustomJson)
+                            await window.electronAPI.sendCustomJson({ Q: parseFloat(v) }, 'Admin P');
+                    } catch (_) {}
+                    updatePIDStatus('proportional', true, 'Saved');
+                }
             });
         }
         var integralInput = document.getElementById('integralInput');
         if (integralInput) {
             integralInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastIntegralValue&&v!=='') { lastIntegralValue=v; updatePIDStatus('integral',false,'Sending...'); var ok=await sendAdminPIDValue('I',v); if(ok) { localStorage.setItem('pid-default-I',v); var m=document.getElementById('pidIInput'); if(m) m.value=v; } updatePIDStatus('integral',ok,ok?'Saved':'Failed'); }
+                var v = this.value.trim();
+                if (v !== lastIntegralValue && v !== '') {
+                    lastIntegralValue = v;
+                    localStorage.setItem('admin-pid-I', v);
+                    try {
+                        if (window.electronAPI && window.electronAPI.sendCustomJson)
+                            await window.electronAPI.sendCustomJson({ R: parseFloat(v) }, 'Admin I');
+                    } catch (_) {}
+                    updatePIDStatus('integral', true, 'Saved');
+                }
             });
         }
         var differentialInput = document.getElementById('differentialInput');
         if (differentialInput) {
             differentialInput.addEventListener('change', async function () {
-                var v=this.value.trim(); if(v!==lastDifferentialValue&&v!=='') { lastDifferentialValue=v; updatePIDStatus('differential',false,'Sending...'); var ok=await sendAdminPIDValue('D',v); if(ok) { localStorage.setItem('pid-default-D',v); var m=document.getElementById('pidDInput'); if(m) m.value=v; } updatePIDStatus('differential',ok,ok?'Saved':'Failed'); }
+                var v = this.value.trim();
+                if (v !== lastDifferentialValue && v !== '') {
+                    lastDifferentialValue = v;
+                    localStorage.setItem('admin-pid-D', v);
+                    try {
+                        if (window.electronAPI && window.electronAPI.sendCustomJson)
+                            await window.electronAPI.sendCustomJson({ S: parseFloat(v) }, 'Admin D');
+                    } catch (_) {}
+                    updatePIDStatus('differential', true, 'Saved');
+                }
             });
         }
 
         var pidRestoreDefaultsBtn = document.getElementById('pidRestoreDefaultsBtn');
         var pidRestoreStatus = document.getElementById('pidRestoreStatus');
         if (pidRestoreDefaultsBtn) {
-            pidRestoreDefaultsBtn.addEventListener('click', async function () {
+            pidRestoreDefaultsBtn.addEventListener('click', function () {
                 var p = PID_FACTORY_DEFAULTS.P, i = PID_FACTORY_DEFAULTS.I, d = PID_FACTORY_DEFAULTS.D;
-                localStorage.setItem('pid-default-P', p);
-                localStorage.setItem('pid-default-I', i);
-                localStorage.setItem('pid-default-D', d);
+                localStorage.setItem('admin-pid-P', p);
+                localStorage.setItem('admin-pid-I', i);
+                localStorage.setItem('admin-pid-D', d);
                 var pIn = document.getElementById('proportionalInput');
                 var iIn = document.getElementById('integralInput');
                 var dIn = document.getElementById('differentialInput');
                 if (pIn) { pIn.value = p; lastProportionalValue = String(p); }
                 if (iIn) { iIn.value = i; lastIntegralValue = String(i); }
                 if (dIn) { dIn.value = d; lastDifferentialValue = String(d); }
-                // Sync main app PID inputs immediately
-                var mP=document.getElementById('pidPInput'); if(mP) mP.value=p;
-                var mI=document.getElementById('pidIInput'); if(mI) mI.value=i;
-                var mD=document.getElementById('pidDInput'); if(mD) mD.value=d;
                 if (pidRestoreStatus) { pidRestoreStatus.textContent = 'Restored to P='+p+', I='+i+', D='+d; setTimeout(function(){ pidRestoreStatus.textContent=''; }, 4000); }
-                await sendAdminPIDValue('P', p);
-                await sendAdminPIDValue('I', i);
-                await sendAdminPIDValue('D', d);
                 addAdminLog('PID defaults restored to factory values: P='+p+', I='+i+', D='+d, 'success');
             });
         }
@@ -2034,6 +2087,8 @@
             var menu = document.getElementById(APP_MENUS[app]);
             if (menu) menu.classList.toggle('hidden', app !== appKey);
         });
+        var topBar = document.getElementById('top-tab-bar-container');
+        if (topBar) topBar.classList.toggle('hidden', appKey === 'admin');
         showPage(APP_DEFAULT_PAGES[appKey]);
     }
 
@@ -2118,6 +2173,16 @@
     }
 
     window.switchToApp = switchToApp;
+
+    // Temperature unit — apply saved preference and sync radio buttons
+    if (typeof updateTempUnitUI === 'function') {
+        updateTempUnitUI();
+    } else {
+        // renderer.js may not be ready yet; defer until it is
+        document.addEventListener('rendererReady', function() {
+            if (typeof updateTempUnitUI === 'function') updateTempUnitUI();
+        });
+    }
 
     // Theme switcher (matches template pattern exactly)
     var themeSelect = document.getElementById('theme-select');

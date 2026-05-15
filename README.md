@@ -1,8 +1,12 @@
-# Process Control Temperature App
+# Process Control Temperature App — Matrix Template
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.6` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.7` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
+
+> **Status: Stable — Temperature control only.**
+> This is the stable Matrix template for the **Temperature** process control module.
+> The full multi-parameter suite (pressure, flow, level, and others) will be built on top of this template in the next phase.
 
 ---
 

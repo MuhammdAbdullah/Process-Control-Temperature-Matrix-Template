@@ -45,6 +45,112 @@ var chartInactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
 var lastControlChangeAt = Date.now();
 var isChartPausedForInactivity = false;
 
+// ── Temperature unit preference ───────────────────────────────────────────────
+var currentTempUnit = localStorage.getItem('temp-unit') || 'C'; // 'C' or 'F'
+
+function celsiusToFahrenheit(c) { return (c * 9 / 5) + 32; }
+function fahrenheitToCelsius(f) { return (f - 32) * 5 / 9; }
+
+function updateTempUnitUI() {
+    var isFahrenheit = currentTempUnit === 'F';
+    var symbol       = isFahrenheit ? '°F' : '°C';
+    var minTemp      = isFahrenheit ? 68  : 20;
+    var maxTemp      = isFahrenheit ? 158 : 70;
+    var btn0Val      = isFahrenheit ? 68  : 20;
+    var btn50Val     = isFahrenheit ? 122 : 50;
+    var btn100Val    = isFahrenheit ? 158 : 70;
+
+    // Update all °C / °F suffix spans
+    document.querySelectorAll('.temp-unit-suffix').forEach(function(el) {
+        el.textContent = symbol;
+    });
+
+    // Update On/Off target slider
+    var onoffSlider  = document.getElementById('onoffTargetSlider');
+    var onoffDisplay = document.getElementById('onoffTargetDisplay');
+    if (onoffSlider) {
+        var curCelsius = isFahrenheit ? fahrenheitToCelsius(parseFloat(onoffSlider.value)) : parseFloat(onoffSlider.value);
+        var newVal = isFahrenheit ? Math.round(celsiusToFahrenheit(curCelsius)) : Math.round(curCelsius);
+        newVal = Math.max(minTemp, Math.min(maxTemp, newVal));
+        onoffSlider.min = minTemp; onoffSlider.max = maxTemp; onoffSlider.value = newVal;
+        if (onoffDisplay) { onoffDisplay.min = minTemp; onoffDisplay.max = maxTemp; onoffDisplay.value = newVal; }
+        onoffTargetTemp = isFahrenheit ? fahrenheitToCelsius(newVal) : newVal;
+    }
+
+    // Update PID target slider
+    var pidSlider  = document.getElementById('pidTargetSlider');
+    var pidDisplay = document.getElementById('pidTargetDisplay');
+    if (pidSlider) {
+        var curCelsiusPid = isFahrenheit ? fahrenheitToCelsius(parseFloat(pidSlider.value)) : parseFloat(pidSlider.value);
+        var newValPid = isFahrenheit ? Math.round(celsiusToFahrenheit(curCelsiusPid)) : Math.round(curCelsiusPid);
+        newValPid = Math.max(minTemp, Math.min(maxTemp, newValPid));
+        pidSlider.min = minTemp; pidSlider.max = maxTemp; pidSlider.value = newValPid;
+        if (pidDisplay) { pidDisplay.min = minTemp; pidDisplay.max = maxTemp; pidDisplay.value = newValPid; }
+        pidTargetTemp = isFahrenheit ? fahrenheitToCelsius(newValPid) : newValPid;
+    }
+
+    // Update quick-set button labels
+    var onoffBtn0   = document.getElementById('onoffTarget0');
+    var onoffBtn50  = document.getElementById('onoffTarget50');
+    var onoffBtn100 = document.getElementById('onoffTarget100');
+    var pidBtn0     = document.getElementById('pidTarget0');
+    var pidBtn50    = document.getElementById('pidTarget50');
+    var pidBtn100   = document.getElementById('pidTarget100');
+    if (onoffBtn0)   onoffBtn0.textContent   = btn0Val   + symbol;
+    if (onoffBtn50)  onoffBtn50.textContent  = btn50Val  + symbol;
+    if (onoffBtn100) onoffBtn100.textContent = btn100Val + symbol;
+    if (pidBtn0)     pidBtn0.textContent     = btn0Val   + symbol;
+    if (pidBtn50)    pidBtn50.textContent    = btn50Val  + symbol;
+    if (pidBtn100)   pidBtn100.textContent   = btn100Val + symbol;
+
+    // Update hysteresis option labels (delta conversion: ×1.8 for °F)
+    var hysteresisSelect = document.getElementById('onoffHysteresis');
+    if (hysteresisSelect) {
+        Array.from(hysteresisSelect.options).forEach(function(opt) {
+            var cVal = parseFloat(opt.value);
+            if (isFahrenheit) {
+                opt.text = Math.round(cVal * 18) / 10 + ' °F';
+            } else {
+                opt.text = cVal + ' °C';
+            }
+        });
+    }
+
+    // Reset heater display so it shows next hardware value in new unit
+    var heaterTempBigEl = document.getElementById('heaterTempBig');
+    if (heaterTempBigEl) heaterTempBigEl.textContent = '--.-';
+
+    // Reinitialise chart for current mode so axis labels update
+    if (currentChartMode === 'manual') {
+        clearAllGraphs(); initChartForManual();
+    } else if (currentChartMode === 'onoff') {
+        clearAllGraphs(); initChartForOnOff();
+    } else if (currentChartMode === 'pid') {
+        clearAllGraphs(); initChartForPID(currentChartControlType || 'PID');
+    }
+
+    // Sync admin radio buttons
+    document.querySelectorAll('input[name="tempUnit"]').forEach(function(r) {
+        r.checked = r.value === currentTempUnit;
+    });
+
+    // Trigger layout.js set-point refresh by firing an input event on the active slider
+    var activeSlider = document.getElementById(
+        currentControlMode === 'onoff' ? 'onoffTargetSlider' : 'pidTargetSlider'
+    );
+    if (activeSlider) activeSlider.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function setTemperatureUnit(unit) {
+    currentTempUnit = unit;
+    localStorage.setItem('temp-unit', unit);
+    var kVal = unit === 'F' ? 1 : 0;
+    if (window.electronAPI && window.electronAPI.sendCustomJson) {
+        try { await window.electronAPI.sendCustomJson({ K: kVal }, 'temp-unit'); } catch (e) { /* web mode */ }
+    }
+    updateTempUnitUI();
+}
+
 function updateChartStatusBadge(paused) {
     var badge = document.getElementById('chartStatusBadge');
     if (!badge) return;
@@ -282,7 +388,7 @@ function initChartForManual() {
                     position: 'left',
                     title: {
                         display: true,
-                        text: 'Temperature (°C)',
+                        text: 'Temperature (' + (currentTempUnit === 'F' ? '°F' : '°C') + ')',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
@@ -291,7 +397,7 @@ function initChartForManual() {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         callback: function(value) {
-                            return Math.round(value) + '°C';
+                            return Math.round(value) + (currentTempUnit === 'F' ? '°F' : '°C');
                         }
                     },
                     beginAtZero: false,
@@ -546,7 +652,7 @@ function initChartForOnOff() {
                     position: 'left',
                     title: {
                         display: true,
-                        text: 'Temperature (°C)',
+                        text: 'Temperature (' + (currentTempUnit === 'F' ? '°F' : '°C') + ')',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
@@ -555,7 +661,7 @@ function initChartForOnOff() {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         callback: function(value) {
-                            return Math.round(value) + '°C';
+                            return Math.round(value) + (currentTempUnit === 'F' ? '°F' : '°C');
                         }
                     },
                     beginAtZero: false,
@@ -798,18 +904,18 @@ function initChartForPID(controlType) {
                 y: {
                     type: 'linear',
                     position: 'left',
-                    title: { 
-                        display: true, 
-                        text: 'Temperature (°C)', 
+                    title: {
+                        display: true,
+                        text: 'Temperature (' + (currentTempUnit === 'F' ? '°F' : '°C') + ')',
                         color: themeColors.text,
                         font: { size: 16, weight: 'bold', family: 'Inter, sans-serif' }
                     },
                     grid: { color: 'rgba(148, 163, 184, 0.1)', display: true },
-                    ticks: { 
+                    ticks: {
                         color: themeColors.text,
                         font: { size: 14, family: 'Inter, sans-serif' },
                         callback: function(value) {
-                            return Math.round(value) + '°C';
+                            return Math.round(value) + (currentTempUnit === 'F' ? '°F' : '°C');
                         }
                     },
                     beginAtZero: false,
@@ -1597,12 +1703,19 @@ async function sendShutdownCommandsOnReconnect() {
         // Update the global control mode variable
         currentControlMode = 'manual';
 
+        // Update mode toggle buttons to reflect Manual state
+        document.querySelectorAll('.mode-btn').forEach(function(btn) {
+            var isActive = btn.dataset.mode === 'manual';
+            btn.classList.toggle('btn-active', isActive);
+            btn.classList.toggle('btn-primary', isActive);
+        });
+
         // Show Manual mode controls, hide others
         var manualControlMode = document.getElementById('manualControlMode');
         var onoffControlMode = document.getElementById('onoffControlMode');
         var pidControlMode = document.getElementById('pidControlMode');
-        
-        if (manualControlMode) manualControlMode.style.display = 'block';
+
+        if (manualControlMode) manualControlMode.style.display = 'flex';
         if (onoffControlMode) onoffControlMode.style.display = 'none';
         if (pidControlMode) pidControlMode.style.display = 'none';
 
@@ -2921,6 +3034,10 @@ function setupDataListeners() {
     window.electronAPI.onConnectionStatus(function (event, status) {
         if (status.connected) {
             updateConnectionStatus(true, status.port);
+            // Re-send temperature unit preference so hardware reports in the saved unit
+            if (currentTempUnit === 'F' && window.electronAPI.sendCustomJson) {
+                window.electronAPI.sendCustomJson({ K: 1 }, 'temp-unit').catch(function() {});
+            }
         } else {
             updateConnectionStatus(false);
             if (status.error) {
@@ -3377,7 +3494,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (window.electronAPI && window.electronAPI.sendHeaterTemp) {
                 var tempResult = await window.electronAPI.sendHeaterTemp(targetTemp);
                 if (tempResult && tempResult.success) {
-                    addToLog('On/Off: Target temperature ' + targetTemp + '°C sent to hardware');
+                    addToLog('On/Off: Target temperature ' + targetTemp + (currentTempUnit === 'F' ? '°F' : '°C') + ' sent to hardware');
                 } else {
                     addToLog('On/Off: Failed to send target temperature: ' + (tempResult && tempResult.error ? tempResult.error : 'Unknown error'));
                 }
@@ -3390,13 +3507,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (window.electronAPI && window.electronAPI.sendHysteresis) {
                 var hystResult = await window.electronAPI.sendHysteresis(hysteresis);
                 if (hystResult && hystResult.success) {
-                    addToLog('On/Off: Hysteresis ' + hysteresis + '°C sent to hardware');
+                    addToLog('On/Off: Hysteresis ' + hysteresis + ' sent to hardware');
                 } else {
                     addToLog('On/Off: Failed to send hysteresis: ' + (hystResult && hystResult.error ? hystResult.error : 'Unknown error'));
                 }
             }
             
-            addToLog('On/Off: Target temperature (' + targetTemp + '°C) and hysteresis (' + hysteresis + '°C) sent successfully');
+            addToLog('On/Off: Target temperature (' + targetTemp + ') and hysteresis (' + hysteresis + ') sent successfully');
             
         } catch (error) {
             addToLog('On/Off: Error sending target and hysteresis: ' + error.message);
@@ -3940,6 +4057,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (powerSlider) {
         powerSlider.addEventListener('input', function () {
             var power = parseInt(powerSlider.value, 10);
+            pendingPowerValue = power;
+            if (pendingPowerTimeout) clearTimeout(pendingPowerTimeout);
+            pendingPowerTimeout = setTimeout(function () { pendingPowerValue = null; }, 2500);
             updatePowerSliderFill(power);
             // Update text box in real-time (but only if it's not currently being edited)
             var powerDisplay = document.getElementById('powerDisplay');
@@ -4059,52 +4179,48 @@ document.addEventListener('DOMContentLoaded', function () {
     // ============================================================================
 
     // Function to update On/Off target temperature slider fill
-    function updateOnOffTargetSliderFill(tempCelsius) {
+    function updateOnOffTargetSliderFill(tempVal) {
+        var tMin = currentTempUnit === 'F' ? 68 : 20;
+        var tMax = currentTempUnit === 'F' ? 158 : 70;
         if (onoffTargetSliderFill) {
-            // 20-70°C maps to 0-100% for the fill
-            var percentage = ((tempCelsius - 20) / (70 - 20)) * 100;
+            var percentage = ((tempVal - tMin) / (tMax - tMin)) * 100;
             onoffTargetSliderFill.style.setProperty('--fill-percent', percentage + '%');
             onoffTargetSliderFill.style.width = percentage + '%';
         }
-        // Update tooltip position
         if (onoffTargetTooltip && onoffTargetSlider) {
             var rect = onoffTargetSlider.getBoundingClientRect();
-            var percentage = (tempCelsius - 20) / (70 - 20);
-            var leftPos = percentage * rect.width;
-            onoffTargetTooltip.style.left = leftPos + 'px';
+            var pct = (tempVal - tMin) / (tMax - tMin);
+            onoffTargetTooltip.style.left = (pct * rect.width) + 'px';
             onoffTargetTooltip.style.transform = 'translateX(-50%)';
         }
     }
 
     // Function to update button active states based on temperature value
-    function updateOnOffTargetButtons(tempCelsius) {
-        // Remove active class from all buttons first
+    function updateOnOffTargetButtons(tempVal) {
         if (onoffTarget0Btn) onoffTarget0Btn.classList.remove('active');
         if (onoffTarget50Btn) onoffTarget50Btn.classList.remove('active');
         if (onoffTarget100Btn) onoffTarget100Btn.classList.remove('active');
-        
-        // Add active class to the button that matches the current value
-        if (tempCelsius === 20) {
-            if (onoffTarget0Btn) onoffTarget0Btn.classList.add('active');
-        } else if (tempCelsius === 50) {
-            if (onoffTarget50Btn) onoffTarget50Btn.classList.add('active');
-        } else if (tempCelsius === 70) {
-            if (onoffTarget100Btn) onoffTarget100Btn.classList.add('active');
-        }
+        var b0 = currentTempUnit === 'F' ? 68 : 20;
+        var b50 = currentTempUnit === 'F' ? 122 : 50;
+        var b100 = currentTempUnit === 'F' ? 158 : 70;
+        if (tempVal === b0 && onoffTarget0Btn) onoffTarget0Btn.classList.add('active');
+        else if (tempVal === b50 && onoffTarget50Btn) onoffTarget50Btn.classList.add('active');
+        else if (tempVal === b100 && onoffTarget100Btn) onoffTarget100Btn.classList.add('active');
     }
 
     // Function to set On/Off target temperature and send to hardware
-    async function setOnOffTargetTemp(tempCelsius) {
+    async function setOnOffTargetTemp(tempVal) {
         markUserControlActivity();
-        console.log('setOnOffTargetTemp called with:', tempCelsius);
-        tempCelsius = Math.max(20, Math.min(70, tempCelsius)); // Clamp to 20-70°C
-        onoffTargetTemp = tempCelsius;
-        console.log('onoffTargetTemp set to:', onoffTargetTemp, '(global variable accessible)');
-        updateOnOffTargetSliderFill(tempCelsius);
+        var tMin = currentTempUnit === 'F' ? 68 : 20;
+        var tMax = currentTempUnit === 'F' ? 158 : 70;
+        var sym  = currentTempUnit === 'F' ? '°F' : '°C';
+        tempVal = Math.max(tMin, Math.min(tMax, tempVal));
+        onoffTargetTemp = tempVal;
+        updateOnOffTargetSliderFill(tempVal);
 
-        if (onoffTargetSlider) onoffTargetSlider.value = tempCelsius;
-        if (onoffTargetDisplay) onoffTargetDisplay.value = tempCelsius;
-        if (onoffTargetTooltip) onoffTargetTooltip.textContent = tempCelsius + '°C';
+        if (onoffTargetSlider) onoffTargetSlider.value = tempVal;
+        if (onoffTargetDisplay) onoffTargetDisplay.value = tempVal;
+        if (onoffTargetTooltip) onoffTargetTooltip.textContent = tempVal + sym;
         
         // Update button states based on the value
         updateOnOffTargetButtons(tempCelsius);
@@ -4120,15 +4236,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (onoffTargetSlider) {
         onoffTargetSlider.addEventListener('input', function () {
             var temp = parseInt(onoffTargetSlider.value, 10);
-            // Update global variable immediately for real-time chart updates
             onoffTargetTemp = temp;
-            // Update text box in real-time
             if (onoffTargetDisplay) onoffTargetDisplay.value = temp;
             updateOnOffTargetSliderFill(temp);
             if (onoffTargetTooltip) {
-                onoffTargetTooltip.textContent = temp + '°C';
+                onoffTargetTooltip.textContent = temp + (currentTempUnit === 'F' ? '°F' : '°C');
             }
-            // Update button states as user moves slider
             updateOnOffTargetButtons(temp);
         });
 
@@ -4139,12 +4252,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         onoffTargetSlider.addEventListener('mousemove', function (e) {
             if (onoffTargetTooltip) {
+                var tMin = currentTempUnit === 'F' ? 68 : 20;
+                var tMax = currentTempUnit === 'F' ? 158 : 70;
                 var rect = onoffTargetSlider.getBoundingClientRect();
-                // Calculate temperature based on 20-70°C range
                 var percentage = (e.clientX - rect.left) / rect.width;
-                var temp = Math.round(20 + (percentage * (70 - 20)));
-                temp = Math.max(20, Math.min(70, temp));
-                onoffTargetTooltip.textContent = temp + '°C';
+                var temp = Math.round(tMin + (percentage * (tMax - tMin)));
+                temp = Math.max(tMin, Math.min(tMax, temp));
+                onoffTargetTooltip.textContent = temp + (currentTempUnit === 'F' ? '°F' : '°C');
             }
         });
     }
@@ -4158,26 +4272,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // When user clicks outside the box, validate and apply the value
         onoffTargetDisplay.addEventListener('blur', function () {
+            var tMin = currentTempUnit === 'F' ? 68 : 20;
+            var tMax = currentTempUnit === 'F' ? 158 : 70;
             var temp = parseInt(onoffTargetDisplay.value, 10);
             if (isNaN(temp)) {
-                // If invalid, reset to slider value
                 if (onoffTargetSlider) {
                     onoffTargetDisplay.value = parseInt(onoffTargetSlider.value, 10);
                 }
             } else {
-                // Clamp to valid range (20-70°C)
-                temp = Math.max(20, Math.min(70, temp));
+                temp = Math.max(tMin, Math.min(tMax, temp));
                 onoffTargetDisplay.value = temp;
-                // Now update slider
                 if (onoffTargetSlider) {
                     onoffTargetSlider.value = temp;
                     updateOnOffTargetSliderFill(temp);
                 }
-                // Update button states
                 updateOnOffTargetButtons(temp);
-                // Update global variable
                 onoffTargetTemp = temp;
-                // Send the value to hardware
                 setOnOffTargetTemp(temp);
             }
         });
@@ -4194,19 +4304,19 @@ document.addEventListener('DOMContentLoaded', function () {
     // On/Off Target Temperature preset buttons
     if (onoffTarget0Btn) {
         onoffTarget0Btn.addEventListener('click', function () {
-            setOnOffTargetTemp(20);
+            setOnOffTargetTemp(currentTempUnit === 'F' ? 68 : 20);
         });
     }
 
     if (onoffTarget50Btn) {
         onoffTarget50Btn.addEventListener('click', function () {
-            setOnOffTargetTemp(50);
+            setOnOffTargetTemp(currentTempUnit === 'F' ? 122 : 50);
         });
     }
 
     if (onoffTarget100Btn) {
         onoffTarget100Btn.addEventListener('click', function () {
-            setOnOffTargetTemp(70);
+            setOnOffTargetTemp(currentTempUnit === 'F' ? 158 : 70);
         });
     }
 
@@ -4223,7 +4333,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 await sendOnOffTargetAndHysteresisToHardware();
             } else {
                 // Just update the value, don't send to hardware
-                addToLog('On/Off: Hysteresis set to ' + value + '°C (will be sent when On/Off mode is active)');
+                addToLog('On/Off: Hysteresis set to ' + value + ' (will be sent when On/Off mode is active)');
             }
         });
     }
@@ -4233,60 +4343,56 @@ document.addEventListener('DOMContentLoaded', function () {
     // ============================================================================
 
     // Function to update PID target temperature slider fill
-    function updatePidTargetSliderFill(tempCelsius) {
+    function updatePidTargetSliderFill(tempVal) {
+        var tMin = currentTempUnit === 'F' ? 68 : 20;
+        var tMax = currentTempUnit === 'F' ? 158 : 70;
         if (pidTargetSliderFill) {
-            // 20-70°C maps to 0-100% for the fill
-            var percentage = ((tempCelsius - 20) / (70 - 20)) * 100;
+            var percentage = ((tempVal - tMin) / (tMax - tMin)) * 100;
             pidTargetSliderFill.style.setProperty('--fill-percent', percentage + '%');
             pidTargetSliderFill.style.width = percentage + '%';
         }
-        // Update tooltip position
         if (pidTargetTooltip && pidTargetSlider) {
             var rect = pidTargetSlider.getBoundingClientRect();
-            var percentage = (tempCelsius - 20) / (70 - 20);
-            var leftPos = percentage * rect.width;
-            pidTargetTooltip.style.left = leftPos + 'px';
+            var pct = (tempVal - tMin) / (tMax - tMin);
+            pidTargetTooltip.style.left = (pct * rect.width) + 'px';
             pidTargetTooltip.style.transform = 'translateX(-50%)';
         }
     }
 
     // Function to update button active states based on temperature value
-    function updatePidTargetButtons(tempCelsius) {
-        // Remove active class from all buttons first
+    function updatePidTargetButtons(tempVal) {
         if (pidTarget0Btn) pidTarget0Btn.classList.remove('active');
         if (pidTarget50Btn) pidTarget50Btn.classList.remove('active');
         if (pidTarget100Btn) pidTarget100Btn.classList.remove('active');
-        
-        // Add active class to the button that matches the current value
-        if (tempCelsius === 20) {
-            if (pidTarget0Btn) pidTarget0Btn.classList.add('active');
-        } else if (tempCelsius === 50) {
-            if (pidTarget50Btn) pidTarget50Btn.classList.add('active');
-        } else if (tempCelsius === 70) {
-            if (pidTarget100Btn) pidTarget100Btn.classList.add('active');
-        }
+        var b0 = currentTempUnit === 'F' ? 68 : 20;
+        var b50 = currentTempUnit === 'F' ? 122 : 50;
+        var b100 = currentTempUnit === 'F' ? 158 : 70;
+        if (tempVal === b0 && pidTarget0Btn) pidTarget0Btn.classList.add('active');
+        else if (tempVal === b50 && pidTarget50Btn) pidTarget50Btn.classList.add('active');
+        else if (tempVal === b100 && pidTarget100Btn) pidTarget100Btn.classList.add('active');
     }
 
     // Function to set PID target temperature and send to hardware
-    async function setPidTargetTemp(tempCelsius) {
+    async function setPidTargetTemp(tempVal) {
         markUserControlActivity();
-        tempCelsius = Math.max(20, Math.min(70, tempCelsius)); // Clamp to 20-70°C
-        pidTargetTemp = tempCelsius;
-        updatePidTargetSliderFill(tempCelsius);
+        var tMin = currentTempUnit === 'F' ? 68 : 20;
+        var tMax = currentTempUnit === 'F' ? 158 : 70;
+        var sym  = currentTempUnit === 'F' ? '°F' : '°C';
+        tempVal = Math.max(tMin, Math.min(tMax, tempVal));
+        pidTargetTemp = tempVal;
+        updatePidTargetSliderFill(tempVal);
 
-        if (pidTargetSlider) pidTargetSlider.value = tempCelsius;
-        if (pidTargetDisplay) pidTargetDisplay.value = tempCelsius;
-        if (pidTargetTooltip) pidTargetTooltip.textContent = tempCelsius + '°C';
-        
-        // Update button states based on the value
-        updatePidTargetButtons(tempCelsius);
+        if (pidTargetSlider) pidTargetSlider.value = tempVal;
+        if (pidTargetDisplay) pidTargetDisplay.value = tempVal;
+        if (pidTargetTooltip) pidTargetTooltip.textContent = tempVal + sym;
 
-        // Send target temperature to hardware when in PID mode
+        updatePidTargetButtons(tempVal);
+
         try {
             if (window.electronAPI && window.electronAPI.sendHeaterTemp) {
-                var result = await window.electronAPI.sendHeaterTemp(tempCelsius);
+                var result = await window.electronAPI.sendHeaterTemp(tempVal);
                 if (result && result.success) {
-                    addToLog('PID: Target temperature sent to hardware: ' + tempCelsius + '°C');
+                    addToLog('PID: Target temperature sent to hardware: ' + tempVal + sym);
                 } else if (result && result.error) {
                     addToLog('PID: Failed to send target temperature: ' + result.error);
                 }
@@ -4300,15 +4406,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (pidTargetSlider) {
         pidTargetSlider.addEventListener('input', function () {
             var temp = parseInt(pidTargetSlider.value, 10);
-            // Update global variable immediately for real-time chart updates
             pidTargetTemp = temp;
-            // Update text box in real-time
             if (pidTargetDisplay) pidTargetDisplay.value = temp;
             updatePidTargetSliderFill(temp);
             if (pidTargetTooltip) {
-                pidTargetTooltip.textContent = temp + '°C';
+                pidTargetTooltip.textContent = temp + (currentTempUnit === 'F' ? '°F' : '°C');
             }
-            // Update button states as user moves slider
             updatePidTargetButtons(temp);
         });
 
@@ -4319,12 +4422,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
         pidTargetSlider.addEventListener('mousemove', function (e) {
             if (pidTargetTooltip) {
+                var tMin = currentTempUnit === 'F' ? 68 : 20;
+                var tMax = currentTempUnit === 'F' ? 158 : 70;
                 var rect = pidTargetSlider.getBoundingClientRect();
-                // Calculate temperature based on 20-70°C range
                 var percentage = (e.clientX - rect.left) / rect.width;
-                var temp = Math.round(20 + (percentage * (70 - 20)));
-                temp = Math.max(20, Math.min(70, temp));
-                pidTargetTooltip.textContent = temp + '°C';
+                var temp = Math.round(tMin + (percentage * (tMax - tMin)));
+                temp = Math.max(tMin, Math.min(tMax, temp));
+                pidTargetTooltip.textContent = temp + (currentTempUnit === 'F' ? '°F' : '°C');
             }
         });
     }
@@ -4339,26 +4443,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // When user clicks outside the box, validate and apply the value
         pidTargetDisplay.addEventListener('blur', function () {
+            var tMin = currentTempUnit === 'F' ? 68 : 20;
+            var tMax = currentTempUnit === 'F' ? 158 : 70;
             var temp = parseInt(pidTargetDisplay.value, 10);
             if (isNaN(temp)) {
-                // If invalid, reset to slider value
                 if (pidTargetSlider) {
                     pidTargetDisplay.value = parseInt(pidTargetSlider.value, 10);
                 }
             } else {
-                // Clamp to valid range (20-70°C)
-                temp = Math.max(20, Math.min(70, temp));
+                temp = Math.max(tMin, Math.min(tMax, temp));
                 pidTargetDisplay.value = temp;
-                // Now update slider
                 if (pidTargetSlider) {
                     pidTargetSlider.value = temp;
                     updatePidTargetSliderFill(temp);
                 }
-                // Update button states
                 updatePidTargetButtons(temp);
-                // Update global variable
                 pidTargetTemp = temp;
-                // Send the value to hardware
                 setPidTargetTemp(temp);
             }
         });
@@ -4375,19 +4475,19 @@ document.addEventListener('DOMContentLoaded', function () {
     // PID Target Temperature preset buttons
     if (pidTarget0Btn) {
         pidTarget0Btn.addEventListener('click', function () {
-            setPidTargetTemp(20);
+            setPidTargetTemp(currentTempUnit === 'F' ? 68 : 20);
         });
     }
 
     if (pidTarget50Btn) {
         pidTarget50Btn.addEventListener('click', function () {
-            setPidTargetTemp(50);
+            setPidTargetTemp(currentTempUnit === 'F' ? 122 : 50);
         });
     }
 
     if (pidTarget100Btn) {
         pidTarget100Btn.addEventListener('click', function () {
-            setPidTargetTemp(70);
+            setPidTargetTemp(currentTempUnit === 'F' ? 158 : 70);
         });
 
         // ============================================================================
@@ -5057,12 +5157,12 @@ document.addEventListener('DOMContentLoaded', function () {
                                 y: {
                                     type: 'linear',
                                     position: 'left',
-                                    title: { display: true, text: 'Temperature (°C)', color: themeColors.text },
+                                    title: { display: true, text: 'Temperature (' + (currentTempUnit === 'F' ? '°F' : '°C') + ')', color: themeColors.text },
                                     grid: { color: themeColors.grid },
-                                    ticks: { 
+                                    ticks: {
                                         color: themeColors.text,
                                         callback: function(value) {
-                                            return Math.round(value) + '°C';
+                                            return Math.round(value) + (currentTempUnit === 'F' ? '°F' : '°C');
                                         }
                                     }
                                 },
@@ -5468,6 +5568,9 @@ if (fanSpeedInput) {
 
     fanSpeedInput.addEventListener('input', function () {
         var percentage = parseInt(fanSpeedInput.value, 10);
+        pendingFanValue = percentage;
+        if (pendingFanTimeout) clearTimeout(pendingFanTimeout);
+        pendingFanTimeout = setTimeout(function () { pendingFanValue = null; }, 2500);
         // Only update text box if it's not currently being edited (not focused)
         if (fanSpeedDisplay && document.activeElement !== fanSpeedDisplay) {
             fanSpeedDisplay.value = percentage;
