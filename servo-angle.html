@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Control – Servo Angle</title>
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <link rel="stylesheet" href="assets/css/matrix-ui.css">
+    <style>
+        @font-face { font-family:'Sonic'; src:local('Sonic'); font-display:swap; }
+        .font-sonic { font-family:'Sonic','Inter',sans-serif; }
+        .chart-wrap { position:relative; width:100%; flex:1; min-height:0; }
+        .chart-wrap canvas { position:absolute; inset:0; width:100%!important; height:100%!important; }
+        .tab-content { display:none; } .tab-content.active { display:block; }
+        .log-info    { color:oklch(var(--in)); } .log-success { color:oklch(var(--su)); }
+        .log-warning { color:oklch(var(--wa)); } .log-error   { color:oklch(var(--er)); }
+        .log-timestamp { color:oklch(var(--bc)/0.5); font-size:0.75rem; }
+        .raw-data-ascii { color:#9b59b6; }
+        #adminLogContainer, #rawDataContainer { height:24rem; overflow-y:scroll; }
+        #page-pct-main { flex-direction:column; overflow:visible; min-height:auto; flex:none; }
+        #main-content { overflow:visible; }
+        #page-pct-main > aside { order:0; width:100%; max-height:none; overflow-y:visible; border-left:0; border-bottom:1px solid oklch(var(--b3)); flex-shrink:0; }
+        #page-pct-main > section { flex:none; overflow:visible; }
+        #page-pct-main > section > .card { flex:none; min-height:350px; }
+        #page-pct-main > section .chart-wrap { flex:none; height:260px; min-height:260px; }
+        @media (min-width:768px) {
+            #main-content { overflow:hidden; }
+            #page-pct-main { flex-direction:row; overflow:hidden; flex:1; }
+            #page-pct-main > aside { order:9999; width:35%; max-height:none; overflow-y:auto; border-left:1px solid oklch(var(--b3)); border-bottom:0; }
+            #page-pct-main > section { flex:1; min-height:0; overflow:hidden; }
+            #page-pct-main > section > .card { flex:1; min-height:0; height:auto; }
+            #page-pct-main > section .chart-wrap { flex:1; min-height:0; height:auto; }
+        }
+        @media (min-width:1024px) { #page-pct-main > aside { width:30%; } }
+        @media (min-width:1280px) { #page-pct-main > aside { width:25%; } }
+    </style>
+</head>
+<body class="min-h-screen bg-base-100 flex flex-col md:overflow-hidden">
+
+<!-- HEADER -->
+<div id="pct-header" class="bg-base-200 border-b border-base-300 shadow-sm min-h-[64px] px-4 py-2 flex-shrink-0 flex items-center w-full">
+    <div class="flex-1 flex items-center gap-2 min-w-0">
+        <button id="sidebar-toggle" class="btn btn-ghost btn-sm btn-square flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+        </button>
+        <img id="matrixLogo" src="assets/Matrix 2024 White.png" alt="Matrix" class="h-6 w-auto object-contain flex-shrink-0">
+    </div>
+    <div class="flex flex-col items-center gap-1 flex-shrink-0 px-4">
+        <span class="font-sonic text-2xl font-black tracking-wider uppercase bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent whitespace-nowrap">
+            SERVO CONTROL — ANGLE
+        </span>
+        <div id="systemStatusIndicator" class="badge badge-error badge-sm gap-1 font-bold tracking-wider uppercase">SYSTEM OFFLINE</div>
+    </div>
+    <div class="flex-1 flex items-center justify-end gap-3">
+        <div class="flex-col items-end hidden lg:flex">
+            <span class="text-[0.6rem] font-bold tracking-widest uppercase opacity-50">Last Updated</span>
+            <span id="lastUpdate" class="text-xs font-medium">Never</span>
+        </div>
+        <select id="theme-select" class="select select-bordered select-xs">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+        </select>
+        <div id="digitalClock" class="font-mono font-bold text-primary text-lg tabular-nums hidden md:block">00:00:00</div>
+    </div>
+</div>
+
+<!-- TOP APP TAB BAR -->
+<div id="top-tab-bar-container" class="bg-base-200 border-b border-base-300 flex-shrink-0 px-2 py-1">
+    <div class="tabs tabs-boxed bg-transparent gap-1" id="app-tab-bar">
+        <button class="tab tab-active font-semibold" data-app="main">🔄 Main App</button>
+    </div>
+</div>
+
+<!-- BODY -->
+<div class="flex flex-1 md:overflow-hidden relative">
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/50 z-40 hidden"></div>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-50 w-64 border-r border-base-300 bg-base-200 flex flex-col overflow-hidden flex-shrink-0 transition-all duration-300 ease-in-out transform -translate-x-full md:translate-x-0">
+        <div class="flex justify-end p-3 md:hidden border-b border-base-300 flex-shrink-0">
+            <button id="sidebar-close-btn" class="btn btn-ghost btn-sm btn-square">✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+            <ul class="menu p-3 gap-1" id="sidebar-main">
+                <li class="menu-title">HMI Dashboard</li>
+                <li><a href="#" data-page="pct-main" class="sidebar-link active">🔄 Servo Angle</a></li>
+                <li class="menu-title mt-2">Tools</li>
+                <li><a href="#" data-page="admin" data-app="admin" class="sidebar-link">🔧 Admin</a></li>
+            </ul>
+            <ul class="menu p-3 gap-1 hidden" id="sidebar-admin">
+                <li class="menu-title">Admin Panels</li>
+                <li><a href="#" data-page="admin" data-admin-tab="dashboard" class="sidebar-link">📊 Dashboard</a></li>
+                <li><a href="#" data-page="admin" data-admin-tab="updates" class="sidebar-link">🔄 Updates</a></li>
+                <li><a href="#" data-page="admin" data-admin-tab="settings" class="sidebar-link">⚙️ Settings</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="main-content" class="flex-1 flex flex-col overflow-hidden">
+
+        <!-- PAGE: pct-main -->
+        <div id="page-pct-main" class="flex flex-1 overflow-hidden">
+
+            <!-- Control panel -->
+            <aside class="flex flex-col gap-3 p-3 bg-base-200 overflow-y-auto flex-shrink-0">
+
+                <!-- Sensor display -->
+                <div class="card bg-base-300 shadow">
+                    <div class="card-body p-4 text-center gap-1">
+                        <div class="text-xs font-bold tracking-widest uppercase opacity-50">Servo Angle</div>
+                        <div class="font-mono font-extrabold tracking-tight tabular-nums" style="font-size:64px;line-height:1;">
+                            <span id="sensorValueBig">---</span><span style="font-size:40px;" class="font-extrabold">°</span>
+                        </div>
+                        <div class="divider my-1"></div>
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="text-xs font-bold tracking-widest uppercase opacity-50">Set Point</span>
+                            <span id="setpointBig" class="text-base font-bold text-primary">-- °</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control mode -->
+                <div class="card bg-base-300 shadow">
+                    <div class="card-body p-3 gap-2">
+                        <div class="text-xs font-bold tracking-widest uppercase opacity-50">Control Mode</div>
+                        <div class="join w-full">
+                            <button class="join-item btn btn-sm flex-1 mode-btn btn-active btn-primary" data-mode="manual">Manual</button>
+                            <button class="join-item btn btn-sm flex-1 mode-btn" data-mode="onoff">ON / OFF</button>
+                            <button class="join-item btn btn-sm flex-1 mode-btn" data-mode="pid">PID</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MANUAL MODE -->
+                <div id="manualControlMode" class="flex flex-col gap-3">
+                    <div class="card bg-base-300 shadow">
+                        <div class="card-body p-4 gap-3">
+                            <div class="text-xs font-bold tracking-widest uppercase opacity-50">Drive Control</div>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="primarySlider" min="-50" max="50" value="0" step="1" class="range range-primary range-sm flex-1">
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <input type="number" id="primaryDisplay" min="-50" max="50" value="0" step="1"
+                                           class="input input-bordered input-sm w-16 text-center font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                                </div>
+                            </div>
+                            <div class="flex justify-between text-xs opacity-50">
+                                <span>-50 (CCW)</span><span>0</span><span>+50 (CW)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ON/OFF MODE -->
+                <div id="onoffControlMode" class="flex flex-col gap-3" style="display:none;">
+                    <div class="card bg-base-300 shadow">
+                        <div class="card-body p-4 gap-3">
+                            <div class="text-xs font-bold tracking-widest uppercase opacity-50">Target Angle</div>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="onoffSetpointSlider" min="-180" max="180" value="0" step="1" class="range range-primary range-sm flex-1">
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <input type="number" id="onoffSetpointDisplay" min="-180" max="180" value="0" step="1"
+                                           class="input input-bordered input-sm w-16 text-center font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                                    <span class="text-sm font-bold opacity-60">°</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between text-xs opacity-50">
+                                <span>-180°</span><span>0°</span><span>+180°</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PID MODE -->
+                <div id="pidControlMode" class="flex flex-col gap-3" style="display:none;">
+                    <div class="card bg-base-300 shadow">
+                        <div class="card-body p-4 gap-3">
+                            <div class="text-xs font-bold tracking-widest uppercase opacity-50">Target Angle</div>
+                            <div class="flex items-center gap-3">
+                                <input type="range" id="pidSetpointSlider" min="-180" max="180" value="0" step="1" class="range range-primary range-sm flex-1">
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <input type="number" id="pidSetpointDisplay" min="-180" max="180" value="0" step="1"
+                                           class="input input-bordered input-sm w-16 text-center font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                                    <span class="text-sm font-bold opacity-60">°</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card bg-base-300 shadow">
+                        <div class="card-body p-4 gap-3">
+                            <div class="text-xs font-bold tracking-widest uppercase opacity-50">PID Parameters</div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">Type:</span>
+                                <select id="pidControlType" class="select select-bordered select-sm flex-1">
+                                    <option value="P">P</option>
+                                    <option value="PI">PI</option>
+                                    <option value="PD">PD</option>
+                                    <option value="PID" selected>PID</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">P Value:</span>
+                                <input type="number" id="pidPInput" min="0" max="100" step="0.01" value="1"
+                                       class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">I Value:</span>
+                                <input type="number" id="pidIInput" min="0" max="100" step="0.01" value="0.1"
+                                       class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">D Value:</span>
+                                <input type="number" id="pidDInput" min="0" max="500" step="0.01" value="0"
+                                       class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                            </div>
+                            <div class="flex gap-2 pt-1">
+                                <button id="pidCommitBtn" class="btn btn-primary btn-sm flex-1">Commit</button>
+                                <button id="pidResetBtn"  class="btn btn-ghost btn-sm flex-1">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </aside>
+
+            <!-- Charts -->
+            <section class="flex-1 flex flex-col overflow-hidden bg-base-100 p-3 gap-3">
+                <div class="card bg-base-200 shadow flex-1 min-h-0">
+                    <div class="card-body p-3 flex flex-col gap-2">
+                        <div class="flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
+                            <h3 class="font-bold text-sm">Servo Angle — Actual vs Target</h3>
+                            <div class="flex items-center gap-1 flex-wrap">
+                                <span id="chartStatusBadge" class="badge badge-success badge-xs font-bold tracking-wider uppercase">LIVE</span>
+                                <select id="chartDisplayMode" class="select select-bordered select-xs">
+                                    <option value="limited">Last 50 pts</option>
+                                    <option value="all" selected>All Data</option>
+                                </select>
+                                <button id="startCsvBtn" class="btn btn-success btn-xs">💾 Save</button>
+                                <button id="stopCsvBtn"  class="btn btn-error btn-xs" style="display:none;">⏹️ Stop</button>
+                                <button id="clearDataBtn" class="btn btn-ghost btn-xs">🗑️ Clear</button>
+                            </div>
+                        </div>
+                        <div class="chart-wrap flex-1"><canvas id="testChartPrimary"></canvas></div>
+                    </div>
+                </div>
+                <div class="card bg-base-200 shadow flex-1 min-h-0">
+                    <div class="card-body p-3 flex flex-col gap-2">
+                        <h3 class="font-bold text-sm flex-shrink-0">Drive Output</h3>
+                        <div class="chart-wrap flex-1"><canvas id="testChartSecondary"></canvas></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- PAGE: admin -->
+        <div id="page-admin" class="hidden flex flex-col flex-1 overflow-hidden">
+            <div class="bg-base-200 border-b border-base-300 px-4 flex-shrink-0">
+                <div class="flex items-center gap-2">
+                    <button id="adminBackBtn" class="btn btn-sm btn-primary gap-1 flex-shrink-0">← Main App</button>
+                    <div class="flex">
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent" onclick="switchTab('updates',this)">🔄 Updates</button>
+                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent" onclick="switchTab('settings',this)">⚙️ Settings</button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div id="dashboardTab" class="tab-content active space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="card bg-base-200 shadow"><div class="card-body p-3 gap-2">
+                            <div class="flex items-center justify-between"><h3 class="font-semibold text-sm">📋 System Logs</h3><button class="btn btn-xs btn-ghost" onclick="exportLogs()">💾 Export</button></div>
+                            <div id="adminLogContainer" class="bg-base-300 rounded p-2 font-mono text-xs leading-relaxed overflow-y-scroll"><div class="log-entry"><span class="log-timestamp">[Init]</span><span class="log-info"> Servo Angle Control ready</span></div></div>
+                        </div></div>
+                        <div class="card bg-base-200 shadow"><div class="card-body p-3 gap-2">
+                            <div class="flex items-center justify-between"><h3 class="font-semibold text-sm">📡 Raw Data Stream</h3><div class="flex gap-1"><button class="btn btn-xs btn-ghost" onclick="clearRawData()">Clear</button><button class="btn btn-xs btn-ghost" onclick="exportRawData()">Export</button></div></div>
+                            <div id="rawDataContainer" class="bg-base-300 rounded p-2 font-mono text-xs leading-relaxed overflow-y-scroll"><div><span class="log-timestamp">[Waiting...]</span></div></div>
+                        </div></div>
+                    </div>
+                    <div class="card bg-base-200 shadow"><div class="card-body p-4">
+                        <h3 class="font-semibold text-sm mb-1">📱 Remote Access</h3>
+                        <div class="flex flex-row items-center gap-4">
+                            <img id="webServerQr" src="" alt="QR" class="w-32 h-32 hidden rounded"/>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs opacity-60">IP:</span><span id="webServerIp" class="font-mono text-sm font-semibold">—</span>
+                                <span class="text-xs opacity-60 mt-1">URL:</span><a id="webServerUrl" href="#" target="_blank" class="font-mono text-primary text-sm break-all">Waiting…</a>
+                            </div>
+                        </div>
+                    </div></div>
+                </div>
+                <div id="updatesTab" class="tab-content">
+                    <div class="card bg-base-200 shadow max-w-lg"><div class="card-body gap-4">
+                        <h2 class="card-title text-base border-b border-success pb-3">🔄 Check for Updates</h2>
+                        <div class="bg-base-300 rounded p-3 border-l-4 border-success"><div class="flex justify-between text-sm"><strong>Version:</strong><span id="currentVersionDisplay" class="font-mono">—</span></div></div>
+                        <button class="btn btn-primary btn-sm w-full" onclick="checkForUpdates()">🔄 Check for Updates</button>
+                    </div></div>
+                </div>
+                <div id="settingsTab" class="tab-content">
+                    <div class="card bg-base-200 shadow max-w-sm"><div class="card-body gap-4">
+                        <h2 class="card-title text-base border-b border-success pb-3">🔧 Hardware Type</h2>
+                        <p class="text-xs text-base-content/60">Select the hardware system frontend to display.</p>
+                        <select id="hardwareTypeSelect" class="select select-bordered select-sm w-full">
+                            <option value="temperature">🌡️ Temperature</option>
+                            <option value="pressure">⚡ Pressure</option>
+                            <option value="level">📊 Level</option>
+                            <option value="flow">💧 Flow</option>
+                            <option value="servo-angle" selected>🔄 Servo – Angle</option>
+                            <option value="servo-speed">⚙️ Servo – Speed</option>
+                        </select>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+window.HARDWARE_CONFIG = {
+    type: 'servo-angle',
+    name: 'Servo Angle',
+    icon: '🔄',
+    sensor: { label: 'Angle', unit: '°', min: -180, max: 180, decimals: 1 },
+    primaryOutput: { key: 'P', label: 'Drive', unit: '', min: -50, max: 50, step: 1 },
+    secondaryOutput: null,
+    valveToggle: false
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="renderer-hardware.js"></script>
+</body>
+</html>

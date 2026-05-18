@@ -57,10 +57,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendPIDValue: (type, value) => ipcRenderer.invoke('send-pid-value', type, value),
   sendPIDFrequency: (value) => ipcRenderer.invoke('send-pid-frequency', value),
   sendCustomJson: (jsonObject, description) => ipcRenderer.invoke('send-custom-json', jsonObject, description),
-  startAutoTune: () => ipcRenderer.invoke('start-auto-tune'),
-  onAutoTuneProgress: (callback) => {
-    ipcRenderer.on('auto-tune-progress', callback);
-  },
   // Bootloader control
   sendBootloader: (value) => ipcRenderer.invoke('send-bootloader', value),
   connectToBootloaderUSB: (vid, pid) => ipcRenderer.invoke('connect-to-bootloader-usb', vid, pid),
@@ -121,6 +117,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Actively request the current web server URL (works even if the event already fired)
   getWebServerUrl: () => ipcRenderer.invoke('get-web-server-url'),
+
+  // Navigate to a different hardware frontend (reloads the main window)
+  loadHardwarePage: (type) => ipcRenderer.invoke('load-hardware-page', type),
 
   // Remove listeners to prevent memory leaks
   removeAllListeners: (channel) => {

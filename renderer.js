@@ -3190,6 +3190,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var stopCsvBtn = document.getElementById('stopCsvBtn');
     var captureDistanceBtn = document.getElementById('captureDistanceBtn');
 
+    if (!window.electronAPI || !window.electronAPI.showSaveDialog) {
+        if (startCsvBtn) startCsvBtn.style.display = 'none';
+        if (stopCsvBtn) stopCsvBtn.style.display = 'none';
+    }
+
 
 
     if (clearDataBtn) {

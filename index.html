@@ -75,9 +75,8 @@
         .log-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.7); }
         #adminLogContainer, #rawDataContainer { height: 24rem; overflow-y: scroll; }
 
-        /* ── Header: portrait phones — prevent title overflow, restore logo visibility ── */
+        /* ── Header: portrait phones — prevent title overflow ── */
         @media (max-width: 639px) {
-            #matrixLogo { display: none; }
             #pct-header-center {
                 flex-shrink: 1;
                 min-width: 0;
@@ -179,7 +178,7 @@
 <!-- ═══════════════════════════════════════════════════════════
      HEADER / NAVBAR
 ════════════════════════════════════════════════════════════════ -->
-<div class="bg-base-200 border-b border-base-300 shadow-sm min-h-[64px] px-4 py-2 flex-shrink-0
+<div id="pct-header" class="bg-base-200 border-b border-base-300 shadow-sm min-h-[64px] px-4 py-2 flex-shrink-0
             flex items-center w-full">
 
     <!-- Left: sidebar toggle + logo (flex-1 so left/right are equal width) -->
@@ -648,23 +647,21 @@
         <div id="page-admin" class="hidden flex flex-col flex-1 overflow-hidden">
 
             <!-- Admin inner tab bar -->
-            <div class="bg-base-200 border-b border-base-300 px-4 flex-shrink-0">
-                <div class="flex items-center gap-2">
-                    <button id="adminBackBtn" class="btn btn-sm btn-primary gap-1 flex-shrink-0">
+            <div class="bg-base-200 border-b border-base-300 flex-shrink-0 px-2 py-1">
+                <div class="flex flex-wrap items-center gap-y-1">
+                    <button id="adminBackBtn" class="btn btn-sm btn-primary gap-1 flex-shrink-0 mr-1">
                         ← Main App
                     </button>
-                    <div class="flex">
-                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active"
-                                onclick="switchTab('dashboard', this)">📊 Dashboard</button>
-                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                                onclick="switchTab('pid', this)">🎛️ PID Controls</button>
-                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                                onclick="switchTab('bootloader', this)">🔧 Bootloader</button>
-                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                                onclick="switchTab('updates', this)">🔄 Updates</button>
-                        <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent"
-                                onclick="switchTab('settings', this)">⚙️ Settings</button>
-                    </div>
+                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-primary active whitespace-nowrap"
+                            onclick="switchTab('dashboard', this)">📊 Dashboard</button>
+                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent whitespace-nowrap"
+                            onclick="switchTab('pid', this)">🎛️ PID Controls</button>
+                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent whitespace-nowrap"
+                            onclick="switchTab('bootloader', this)">🔧 Bootloader</button>
+                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent whitespace-nowrap"
+                            onclick="switchTab('updates', this)">🔄 Updates</button>
+                    <button class="tab-button btn btn-ghost btn-sm rounded-none border-b-2 border-transparent whitespace-nowrap"
+                            onclick="switchTab('settings', this)">⚙️ Settings</button>
                 </div>
             </div>
 
@@ -883,35 +880,59 @@
 
                 <!-- SETTINGS TAB -->
                 <div id="settingsTab" class="tab-content">
-                    <div class="card bg-base-200 shadow max-w-sm">
-                        <div class="card-body gap-4">
-                            <h2 class="card-title text-base border-b border-success pb-3">🌡️ Temperature Unit</h2>
-                            <p class="text-xs text-base-content/60">
-                                Select the unit used for all temperature displays, sliders, and charts.
-                                The hardware will be commanded to send sensor data in the selected unit.
-                            </p>
-                            <div class="flex flex-col gap-3">
-                                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
-                                    <input type="radio" name="tempUnit" value="C" class="radio radio-primary"
-                                           onchange="setTemperatureUnit(this.value)">
-                                    <div>
-                                        <div class="font-semibold text-sm">Celsius (°C)</div>
-                                        <div class="text-xs opacity-60">Range: 20 °C – 70 °C</div>
-                                    </div>
-                                </label>
-                                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
-                                    <input type="radio" name="tempUnit" value="F" class="radio radio-primary"
-                                           onchange="setTemperatureUnit(this.value)">
-                                    <div>
-                                        <div class="font-semibold text-sm">Fahrenheit (°F)</div>
-                                        <div class="text-xs opacity-60">Range: 68 °F – 158 °F</div>
-                                    </div>
-                                </label>
+                    <div class="flex flex-col gap-4 max-w-sm">
+
+                        <!-- Hardware type selector -->
+                        <div class="card bg-base-200 shadow">
+                            <div class="card-body gap-4">
+                                <h2 class="card-title text-base border-b border-success pb-3">🔧 Hardware Type</h2>
+                                <p class="text-xs text-base-content/60">
+                                    Select the hardware system connected to this PC. The app will reload with the correct frontend.
+                                </p>
+                                <select id="hardwareTypeSelect" class="select select-bordered select-sm w-full">
+                                    <option value="temperature" selected>🌡️ Temperature</option>
+                                    <option value="pressure">⚡ Pressure</option>
+                                    <option value="level">📊 Level</option>
+                                    <option value="flow">💧 Flow</option>
+                                    <option value="servo-angle">🔄 Servo – Angle</option>
+                                    <option value="servo-speed">⚙️ Servo – Speed</option>
+                                </select>
+                                <p class="text-xs text-base-content/50">Changing this will navigate to the matching hardware page.</p>
                             </div>
-                            <p class="text-xs text-base-content/50">
-                                This setting is saved and applied automatically each time you connect to hardware.
-                            </p>
                         </div>
+
+                        <!-- Temperature unit -->
+                        <div class="card bg-base-200 shadow">
+                            <div class="card-body gap-4">
+                                <h2 class="card-title text-base border-b border-success pb-3">🌡️ Temperature Unit</h2>
+                                <p class="text-xs text-base-content/60">
+                                    Select the unit used for all temperature displays, sliders, and charts.
+                                    The hardware will be commanded to send sensor data in the selected unit.
+                                </p>
+                                <div class="flex flex-col gap-3">
+                                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
+                                        <input type="radio" name="tempUnit" value="C" class="radio radio-primary"
+                                               onchange="setTemperatureUnit(this.value)">
+                                        <div>
+                                            <div class="font-semibold text-sm">Celsius (°C)</div>
+                                            <div class="text-xs opacity-60">Range: 20 °C – 70 °C</div>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg bg-base-300 hover:bg-base-100 transition-colors">
+                                        <input type="radio" name="tempUnit" value="F" class="radio radio-primary"
+                                               onchange="setTemperatureUnit(this.value)">
+                                        <div>
+                                            <div class="font-semibold text-sm">Fahrenheit (°F)</div>
+                                            <div class="text-xs opacity-60">Range: 68 °F – 158 °F</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-base-content/50">
+                                    This setting is saved and applied automatically each time you connect to hardware.
+                                </p>
+                            </div>
+                        </div>
+
                     </div>
                 </div><!-- /settingsTab -->
 
@@ -1608,7 +1629,7 @@
             if (window.electronAPI && window.electronAPI.sendBootloader) {
                 const result = await window.electronAPI.sendBootloader(1);
                 if (result.success) {
-                    addBootloaderLog('Bootloader command sent — click Connect when device is ready.', 'info');
+                    addBootloaderLog('Bootloader command sent — click Connect (will wait up to 5 seconds for device).', 'info');
                     var connectBtn = document.getElementById('connectBtn');
                     if (connectBtn) connectBtn.disabled = false;
                 } else {
@@ -2195,6 +2216,40 @@
             var newTheme = themeSelect.value;
             htmlEl.setAttribute('data-theme', newTheme);
             localStorage.setItem('matrix-theme', newTheme);
+        });
+    }
+
+    // Hardware type selector — navigate to the matching hardware frontend
+    var hwSelect = document.getElementById('hardwareTypeSelect');
+    if (hwSelect) {
+        var hwPages = {
+            temperature:   'index.html',
+            pressure:      'pressure.html',
+            level:         'level.html',
+            flow:          'flow.html',
+            'servo-angle': 'servo-angle.html',
+            'servo-speed': 'servo-speed.html'
+        };
+        var hwTypeCodes = {
+            temperature:   201,
+            pressure:      202,
+            level:         203,
+            flow:          204,
+            'servo-angle': 205,
+            'servo-speed': 205
+        };
+        hwSelect.addEventListener('change', function() {
+            var type = hwSelect.value;
+            var code = hwTypeCodes[type];
+            if (code !== undefined && window.electronAPI && window.electronAPI.sendCustomJson) {
+                window.electronAPI.sendCustomJson({ A: code }, 'hardware-type');
+            }
+            if (type === 'temperature') return; // already here
+            if (window.electronAPI && window.electronAPI.loadHardwarePage) {
+                window.electronAPI.loadHardwarePage(type);
+            } else {
+                window.location.href = hwPages[type] || 'index.html';
+            }
         });
     }
 })();
