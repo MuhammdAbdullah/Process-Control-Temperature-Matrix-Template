@@ -133,6 +133,11 @@ function createWindow() {
   // Load the index.html file
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
+  // Re-broadcast connection state to every newly loaded page (e.g. hardware type switch)
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.send('connection-status', { connected: isConnected, port: activeSerialPath });
+  });
+
   // Handle child windows opened with window.open() (Curriculum, Lab windows, etc.)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     // External http/https links (e.g. phone/tablet URL) → open in system browser

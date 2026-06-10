@@ -41,6 +41,11 @@ var lastPidValues = {
     output: 0
 };
 
+var pendingIntermediateTPackets = []; // {T, receivedAt} buffered T-only packets between main packets
+var lastMainPacketTime = null;        // ms timestamp of last main {T,P,F} packet
+var lastKnownP = 0;                   // carry-forward power from last main packet
+var lastKnownF = 0;                   // carry-forward fan from last main packet
+
 var chartInactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
 var lastControlChangeAt = Date.now();
 var isChartPausedForInactivity = false;
@@ -1296,7 +1301,7 @@ function addPoint(valuesArray13, options) {
             return;
         }
 
-        var now = new Date();
+        var now = (options && options.timestamp instanceof Date) ? options.timestamp : new Date();
         var timeLabel = now.getHours().toString().padStart(2, '0') + ':' +
                         now.getMinutes().toString().padStart(2, '0') + ':' +
                         now.getSeconds().toString().padStart(2, '0');
@@ -2695,6 +2700,31 @@ function handleJsonData(jsonData) {
         }
         
         // ============================================================================
+        // HANDLE INTERMEDIATE T-ONLY PACKET: {"T": val} — no P, F, or PID fields
+        // Buffer these; they will be flushed equally-distributed when the next main
+        // packet arrives.
+        // ============================================================================
+        var hasT = typeof jsonData.T !== 'undefined';
+        var hasP = typeof jsonData.P !== 'undefined';
+        var hasF = typeof jsonData.F !== 'undefined';
+        if (hasT && !hasP && !hasF) {
+            var tVal = parseFloat(jsonData.T);
+            if (!isNaN(tVal)) {
+                var iPr = (typeof jsonData.Pr === 'number' && !isNaN(jsonData.Pr)) ? jsonData.Pr : null;
+                var iIt = (typeof jsonData.It === 'number' && !isNaN(jsonData.It)) ? jsonData.It : null;
+                var iDr = (typeof jsonData.Dr === 'number' && !isNaN(jsonData.Dr)) ? jsonData.Dr : null;
+                var iOt = (typeof jsonData.Ot === 'number' && !isNaN(jsonData.Ot)) ? jsonData.Ot : null;
+                pendingIntermediateTPackets.push({ T: tVal, Pr: iPr, It: iIt, Dr: iDr, Ot: iOt, receivedAt: Date.now() });
+                // Update lastPidValues so the following main packet uses latest PID terms
+                if (iPr !== null) lastPidValues.proportional = iPr;
+                if (iIt !== null) lastPidValues.integral = iIt;
+                if (iDr !== null) lastPidValues.derivative = iDr;
+                if (iOt !== null) lastPidValues.output = iOt;
+            }
+            return;
+        }
+
+        // ============================================================================
         // HANDLE MAIN DATA MESSAGE: {"T": 25.5, "P": 45.2, "F": 50}
         // ============================================================================
         
@@ -2733,6 +2763,9 @@ function handleJsonData(jsonData) {
         if (typeof power !== 'number' || isNaN(power)) {
             return;
         }
+
+        lastKnownP = power;
+        lastKnownF = (typeof fanSpeed === 'number' && !isNaN(fanSpeed)) ? fanSpeed : lastKnownF;
 
         var heaterTempBigEl = document.getElementById('heaterTempBig');
         if (heaterTempBigEl) heaterTempBigEl.textContent = temperature.toFixed(1);
@@ -2903,7 +2936,27 @@ function handleJsonData(jsonData) {
         // This ensures On/Off mode uses window.liveChartRef, not chartJsRef
         refreshChartPauseState();
         if (!isChartPausedForInactivity && typeof addPoint === 'function') {
-            // addPoint expects valuesArray13 format - we already built it above
+            // Flush buffered T-only intermediate packets, equally distributed between
+            // the previous main packet time and now, before plotting the current main packet.
+            if (!skipNextDataPoint && pendingIntermediateTPackets.length > 0 && lastMainPacketTime !== null) {
+                var flushNow = Date.now();
+                var flushPrev = lastMainPacketTime;
+                var flushN = pendingIntermediateTPackets.length;
+                for (var pi = 0; pi < flushN; pi++) {
+                    var interimTs = new Date(flushPrev + (pi + 1) * (flushNow - flushPrev) / (flushN + 1));
+                    var iPkt = pendingIntermediateTPackets[pi];
+                    var iArr = [NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,
+                                iPkt.T,
+                                lastKnownP, NaN, NaN,
+                                iPkt.Ot !== null ? iPkt.Ot : lastPidValues.output,
+                                iPkt.Pr !== null ? iPkt.Pr : lastPidValues.proportional,
+                                iPkt.It !== null ? iPkt.It : lastPidValues.integral,
+                                iPkt.Dr !== null ? iPkt.Dr : lastPidValues.derivative];
+                    addPoint(iArr, { skipCsv: true, timestamp: interimTs });
+                }
+            }
+            pendingIntermediateTPackets = [];
+            lastMainPacketTime = Date.now();
             addPoint(valuesArray13, { skipCsv: true });
         }
         
@@ -5894,7 +5947,7 @@ console.log('All graphs cleared after hardware device reconnected');
 // Note: Chart will be reinitialized when data starts flowing again based on currentChartMode
 
 window.addEventListener('beforeunload', function () {
-    if (isConnected) {
+    if (isConnected && !window._skipDisconnectOnUnload) {
         window.electronAPI.disconnectFromPort().catch(function (error) {
             console.log('Error during disconnect:', error);
         });

@@ -71,6 +71,7 @@
 <div id="top-tab-bar-container" class="bg-base-200 border-b border-base-300 flex-shrink-0 px-2 py-1">
     <div class="tabs tabs-boxed bg-transparent gap-1" id="app-tab-bar">
         <button class="tab tab-active font-semibold" data-app="main">⚙️ Main App</button>
+        <button class="tab font-semibold" data-app="curriculum">📚 Curriculum</button>
     </div>
 </div>
 
@@ -161,9 +162,9 @@
                         <div class="card-body p-4 gap-3">
                             <div class="text-xs font-bold tracking-widest uppercase opacity-50">Target Speed</div>
                             <div class="flex items-center gap-3">
-                                <input type="range" id="onoffSetpointSlider" min="0" max="60" value="0" step="1" class="range range-primary range-sm flex-1">
+                                <input type="range" id="onoffSetpointSlider" min="12" max="60" value="12" step="1" class="range range-primary range-sm flex-1">
                                 <div class="flex items-center gap-1 flex-shrink-0">
-                                    <input type="number" id="onoffSetpointDisplay" min="0" max="60" value="0" step="1"
+                                    <input type="number" id="onoffSetpointDisplay" min="12" max="60" value="12" step="1"
                                            class="input input-bordered input-sm w-16 text-center font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
                                     <span class="text-sm font-bold opacity-60">RPM</span>
                                 </div>
@@ -208,20 +209,29 @@
                                     <option value="PID" selected>PID</option>
                                 </select>
                             </div>
-                            <div class="flex items-center gap-2">
+                            <div id="pidPInputContainer" class="flex items-center gap-2">
                                 <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">P Value:</span>
                                 <input type="number" id="pidPInput" min="0" max="100" step="0.01" value="1"
                                        class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
                             </div>
-                            <div class="flex items-center gap-2">
+                            <div id="pidIInputContainer" class="flex items-center gap-2">
                                 <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">I Value:</span>
                                 <input type="number" id="pidIInput" min="0" max="100" step="0.01" value="0.1"
                                        class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
                             </div>
-                            <div class="flex items-center gap-2">
+                            <div id="pidDInputContainer" class="flex items-center gap-2">
                                 <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">D Value:</span>
                                 <input type="number" id="pidDInput" min="0" max="500" step="0.01" value="0"
                                        class="input input-bordered input-sm flex-1 font-mono tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-semibold opacity-70 w-16 flex-shrink-0">Freq (Hz):</span>
+                                <select id="pidFrequency" class="select select-bordered select-sm flex-1">
+                                    <option value="1" selected>1</option><option value="10">10</option>
+                                    <option value="50">50</option><option value="100">100</option>
+                                    <option value="250">250</option><option value="500">500</option>
+                                    <option value="1000">1000</option>
+                                </select>
                             </div>
                             <div class="flex gap-2 pt-1">
                                 <button id="pidCommitBtn" class="btn btn-primary btn-sm flex-1">Commit</button>

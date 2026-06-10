@@ -2093,6 +2093,9 @@
         var backBtn = document.getElementById('adminBackBtn');
         if (backBtn) backBtn.addEventListener('click', function() { switchToApp('main'); });
 
+        // When opened from a hardware page via IPC, switch directly to curriculum
+        if (window.location.hash === '#curriculum') switchToApp('curriculum');
+
         // Remote Access card is only meaningful on the PC app (Electron)
         if (!navigator.userAgent.includes('Electron')) {
             var card = document.getElementById('remoteAccessCard');
@@ -2235,20 +2238,33 @@
             pressure:      202,
             level:         203,
             flow:          204,
-            'servo-angle': 205,
+            'servo-angle': 206,
             'servo-speed': 205
         };
         hwSelect.addEventListener('change', function() {
             var type = hwSelect.value;
             var code = hwTypeCodes[type];
-            if (code !== undefined && window.electronAPI && window.electronAPI.sendCustomJson) {
-                window.electronAPI.sendCustomJson({ A: code }, 'hardware-type');
+            function doNavigate() {
+                if (type === 'temperature') return; // already here
+                window._skipDisconnectOnUnload = true;
+                if (window.electronAPI && window.electronAPI.loadHardwarePage) {
+                    window.electronAPI.loadHardwarePage(type);
+                } else {
+                    window.location.href = hwPages[type] || 'index.html';
+                }
             }
-            if (type === 'temperature') return; // already here
-            if (window.electronAPI && window.electronAPI.loadHardwarePage) {
-                window.electronAPI.loadHardwarePage(type);
+            if (code !== undefined && window.electronAPI && window.electronAPI.sendCustomJson) {
+                window.electronAPI.sendCustomJson({ A: code }, 'hardware-type').then(function (result) {
+                    if (!result || !result.success) {
+                        console.warn('[HW TYPE] command failed:', result && result.error || 'not connected');
+                    }
+                    doNavigate();
+                }, function (err) {
+                    console.error('[HW TYPE] command error:', err);
+                    doNavigate();
+                });
             } else {
-                window.location.href = hwPages[type] || 'index.html';
+                doNavigate();
             }
         });
     }

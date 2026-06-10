@@ -2,11 +2,10 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.7` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.8` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
 
-> **Status: Stable — Temperature control only.**
-> This is the stable Matrix template for the **Temperature** process control module.
-> The full multi-parameter suite (pressure, flow, level, and others) will be built on top of this template in the next phase.
+> **Status: Stable — Multi-sensor suite.**
+> Supports Temperature, Pressure, Flow, Level, Servo Speed, and Servo Angle sensor pages — all driven by a shared `renderer-hardware.js` control engine.
 
 ---
 
@@ -213,11 +212,17 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 |------|---------|
 | [main.js](main.js) | Hardware I/O, IPC handlers, safety sequences, bootloader |
 | [preload.js](preload.js) | IPC bridge (context isolation) |
-| [renderer.js](renderer.js) | All UI logic (~6100 lines): control modes, charting, CSV export |
+| [renderer.js](renderer.js) | Temperature page UI logic (~6100 lines): control modes, charting, CSV export |
+| [renderer-hardware.js](renderer-hardware.js) | Shared renderer for all non-temperature sensor pages; driven by `window.HARDWARE_CONFIG` |
 | [layout.js](layout.js) | Clock, mode toggle, temperature display sync |
 | [server.js](server.js) | Express server for web/tablet deployment |
 | [admin.html](admin.html) | Admin panel: logs, raw data, bootloader, updates |
-| [index.html](index.html) | Main app UI |
+| [index.html](index.html) | Temperature sensor page |
+| [pressure.html](pressure.html) | Pressure sensor page |
+| [flow.html](flow.html) | Flow sensor page |
+| [level.html](level.html) | Level sensor page |
+| [servo-speed.html](servo-speed.html) | Servo speed sensor page |
+| [servo-angle.html](servo-angle.html) | Servo angle sensor page |
 | [assets/css/matrix-ui.css](assets/css/matrix-ui.css) | DaisyUI + Tailwind UI styles |
 
 ---
@@ -288,7 +293,20 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.6 (current)
+### v0.1.8 (current)
+- **Multi-sensor suite** — added Pressure, Flow, Level, Servo Speed, and Servo Angle pages; all share a single `renderer-hardware.js` engine configured via `window.HARDWARE_CONFIG`
+- **Intermediate T-only packet buffering** — `renderer.js` now buffers `{T}` packets (without P/F) and flushes them to the chart equally distributed between main data packets, preserving accurate timestamps
+- **Auto-reconnect UX** — on serial/USB reconnect, charts are cleared and the UI resets to Manual mode; a debounced 1 s delay sends `C:1` to the device to avoid command stacking during unstable connects
+- **Slider drag fix** — sliders update the UI live on `input` but only send the hardware command on `change` (release), preventing serial flooding during drag
+- **PID input visibility** — I and D input containers are shown/hidden automatically based on the selected PID sub-type (P / PI / PD / PID) on all hardware pages
+- **Per-field PID send** — P, I, D gain inputs each send their value to hardware individually on `change`
+- **PID frequency listener** — PID frequency selector on hardware pages sends `PID_Hz` to hardware on change, and also sends it automatically when switching to PID mode
+- **Hardware type navigation** — navigation to another sensor page now awaits the `sendCustomJson` promise before redirecting, with error logging on failure
+- **Fixed `/api/command` POST body** — web-mode command payloads were incorrectly wrapped; now sent as the raw command object
+- **Hysteresis floor fix** — On/Off lower hysteresis band now clamps to `CFG.sensor.min` instead of hardcoded `0`
+- **`_skipDisconnectOnUnload` flag** — prevents spurious hardware disconnect when navigating between sensor pages
+
+### v0.1.6
 - **Embedded web server** — Electron desktop app now starts an Express server on a free LAN port; displays URL and QR code for instant phone/tablet access
 - **SSE data stream** — hardware data (`json-data`, `connection-status`) pushed to all connected browsers via `GET /api/events` (Server-Sent Events); 20 s keep-alive ping to prevent mobile browser disconnects
 - **`server.js` fully rewritten** — replaced all mock API endpoints with real `serialport` integration; REST API for port listing, connect, disconnect, and command forwarding; shared state with SSE broadcast

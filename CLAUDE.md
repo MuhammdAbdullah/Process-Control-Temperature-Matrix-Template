@@ -22,7 +22,7 @@ No test suite exists. Minimum Node.js version: 16+.
 
 ## Architecture
 
-This is an **Electron desktop app** (v0.1.7, Electron 38) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
+This is an **Electron desktop app** (v0.1.8, Electron 38) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
 
 ### Process Boundary
 
@@ -79,11 +79,27 @@ PID mode has four sub-types (P / PI / PD / PID) that change the secondary canvas
 - [main.js](main.js) — hardware I/O, IPC handlers, safety sequences, bootloader
 - [preload.js](preload.js) — IPC bridge definitions
 - [renderer.js](renderer.js) — all UI logic (~6100 lines); control mode state, chart management, CSV export
+- [renderer-hardware.js](renderer-hardware.js) — shared renderer for all non-temperature sensor pages; driven by `window.HARDWARE_CONFIG`
 - [layout.js](layout.js) — clock, mode toggle, temperature display sync
 - [server.js](server.js) — Express server for web/tablet deployment
 - [admin.html](admin.html) + inline JS — live logs, raw data stream, bootloader (HEX upload/erase/verify/run), update check
+- [splash.html](splash.html) — app loading/splash screen
 - [assets/css/matrix-ui.css](assets/css/matrix-ui.css) — DaisyUI + Tailwind UI styles
 - [assets/libs/](assets/libs/) — vendored Three.js, Chart.js, GLTFLoader, OrbitControls
+
+### Multi-Sensor Pages
+
+`index.html` handles temperature. Five additional pages cover other hardware sensor types, each using the same shared `renderer-hardware.js`:
+
+| Page | Sensor type |
+|------|-------------|
+| [pressure.html](pressure.html) | Pressure |
+| [flow.html](flow.html) | Flow |
+| [level.html](level.html) | Level |
+| [servo-speed.html](servo-speed.html) | Servo speed |
+| [servo-angle.html](servo-angle.html) | Servo angle |
+
+Each page defines `window.HARDWARE_CONFIG` before loading `renderer-hardware.js`. The config object drives unit labels, axis ranges, and any sensor-specific UI differences. `renderer-hardware.js` mirrors the same control-mode state machine, dual-canvas Chart.js setup, PID two-message protocol, 40ms command throttle, CSV export, and safety sequences as `renderer.js` — keep the two in sync when changing shared behaviour.
 
 ### renderer.js Navigation Guide
 

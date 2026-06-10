@@ -35,6 +35,8 @@
   var hexFileLoaded = false;
   var hexFilePath = '';
   var lastProportionalValue = '', lastIntegralValue = '', lastDifferentialValue = '';
+  var wasConnected = false;
+  var reconnectTimer = null;
   var PID_FACTORY_DEFAULTS = { P: 3.162, I: 0.01, D: 150 };
 
   // ── DOM helper ────────────────────────────────────────────────────────────────
@@ -64,7 +66,7 @@
       fetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: obj })
+        body: JSON.stringify(obj)
       }).catch(function () {});
     }
   }
@@ -89,6 +91,35 @@
         (connected ? 'badge-success' : 'badge-error');
     }
     addLog(msg || (connected ? 'Connected' : 'Disconnected'), connected ? 'success' : 'error');
+
+    if (!wasConnected && connected) {
+      // Clear chart data without destroying/recreating (safe during unstable reconnect)
+      if (chartJsRef)  { chartJsRef.data.labels = []; chartJsRef.data.datasets.forEach(function(d) { d.data = []; }); chartJsRef.update(); }
+      if (liveChartRef){ liveChartRef.data.labels = []; liveChartRef.data.datasets.forEach(function(d) { d.data = []; }); liveChartRef.update(); }
+
+      // Reset UI to manual without sending any serial commands yet
+      currentMode = 'manual';
+      skipNextPoint = true;
+      document.querySelectorAll('.mode-btn').forEach(function(btn) {
+        var active = btn.getAttribute('data-mode') === 'manual';
+        btn.classList.toggle('btn-active', active);
+        btn.classList.toggle('btn-primary', active);
+      });
+      ['manual', 'onoff', 'pid'].forEach(function(m) {
+        var panel = el(m + 'ControlMode');
+        if (panel) panel.style.display = m === 'manual' ? 'flex' : 'none';
+      });
+
+      // Send C:1 after port stabilises — debounced so reconnect loops don't stack
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        queueSend({ C: 1 }, 'Control Mode');
+        addLog('Device reconnected — charts cleared, reset to Manual mode', 'info');
+      }, 1000);
+    }
+
+    wasConnected = connected;
   }
 
   // ── Sensor / setpoint display ─────────────────────────────────────────────────
@@ -106,6 +137,14 @@
     display.textContent = (typeof val === 'number')
       ? (val.toFixed(1) + ' ' + CFG.sensor.unit)
       : ('-- ' + CFG.sensor.unit);
+  }
+
+  function updatePIDInputsVisibility() {
+    var ct = currentPidControlType;
+    var pC = el('pidPInputContainer'), iC = el('pidIInputContainer'), dC = el('pidDInputContainer');
+    if (pC) pC.style.display = 'flex';
+    if (iC) iC.style.display = (ct === 'PI' || ct === 'PID') ? 'flex' : 'none';
+    if (dC) dC.style.display = (ct === 'PD' || ct === 'PID') ? 'flex' : 'none';
   }
 
   // ── Chart legend builder (matches renderer.js exactly) ───────────────────────
@@ -435,7 +474,8 @@
     if (currentMode === 'onoff') {
       if (chartJsRef.data.datasets[2]) {
         var hystLow = (typeof lastSetpoint === 'number' ? lastSetpoint : 0) - lastHysteresis;
-        chartJsRef.data.datasets[2].data.push(Math.max(0, hystLow));
+        var hystMin = (CFG.sensor && typeof CFG.sensor.min === 'number') ? CFG.sensor.min : 0;
+        chartJsRef.data.datasets[2].data.push(Math.max(hystMin, hystLow));
       }
     }
 
@@ -547,6 +587,16 @@
     });
 
     initCharts(mode);
+
+    if (mode === 'pid') {
+      commitPID();
+      var freqEl = el('pidFrequency');
+      if (freqEl) {
+        var freqVal = parseFloat(freqEl.value);
+        if (!isNaN(freqVal) && freqVal > 0) queueSend({ PID_Hz: freqVal }, 'PID Frequency');
+      }
+    }
+
     addLog('Switched to ' + mode.toUpperCase() + ' mode', 'info');
   }
 
@@ -595,14 +645,19 @@
     var slider  = el(sliderId);
     var display = el(displayId);
     if (!slider) return;
-    function send() {
+    function updateDisplay() {
       var val = parseFloat(slider.value);
       if (display) display.value = val;
-      var cmd = {}; cmd[jsonKey] = val;
-      queueSend(cmd, label);
       if (jsonKey === 'T') { lastSetpoint = val; showSetpoint(val); }
     }
-    slider.addEventListener('input', send);
+    function send() {
+      updateDisplay();
+      var val = parseFloat(slider.value);
+      var cmd = {}; cmd[jsonKey] = val;
+      queueSend(cmd, label);
+    }
+    slider.addEventListener('input', updateDisplay);   // update UI only while dragging
+    slider.addEventListener('change', send);           // send to hardware on release
     if (display) {
       display.addEventListener('change', function () {
         var v = Math.min(Math.max(parseFloat(display.value), parseFloat(slider.min)), parseFloat(slider.max));
@@ -652,6 +707,11 @@
   }
 
   function switchToApp(appKey) {
+    if (appKey === 'curriculum') {
+      window._skipDisconnectOnUnload = true;
+      window.location.href = 'index.html#curriculum';
+      return;
+    }
     // Toggle top tab buttons
     document.querySelectorAll('#app-tab-bar .tab').forEach(function (t) {
       t.classList.toggle('tab-active', t.dataset.app === appKey);
@@ -683,7 +743,7 @@
     pressure:      202,
     level:         203,
     flow:          204,
-    'servo-angle': 205,
+    'servo-angle': 206,
     'servo-speed': 205
   };
 
@@ -691,13 +751,26 @@
     var page = HW_PAGES[type];
     if (!page) return;
     var code = HW_TYPE_CODES[type];
-    if (code !== undefined && isElectron && api.sendCustomJson) {
-      api.sendCustomJson({ A: code }, 'hardware-type');
+    function doNavigate() {
+      window._skipDisconnectOnUnload = true;
+      if (isElectron && api.loadHardwarePage) {
+        api.loadHardwarePage(type);
+      } else {
+        window.location.href = page;
+      }
     }
-    if (isElectron && api.loadHardwarePage) {
-      api.loadHardwarePage(type);
+    if (code !== undefined && isElectron && api.sendCustomJson) {
+      api.sendCustomJson({ A: code }, 'hardware-type').then(function (result) {
+        if (!result || !result.success) {
+          addLog('Hardware type command failed: ' + ((result && result.error) || 'not connected'), 'error');
+        }
+        doNavigate();
+      }, function (err) {
+        addLog('Hardware type command error: ' + (err && err.message || err), 'error');
+        doNavigate();
+      });
     } else {
-      window.location.href = page;
+      doNavigate();
     }
   }
 
@@ -1420,7 +1493,18 @@
     if (pidTypeSelect) {
       pidTypeSelect.addEventListener('change', function () {
         currentPidControlType = pidTypeSelect.value;
+        updatePIDInputsVisibility();
         if (currentMode === 'pid') { skipNextPoint = true; initCharts('pid'); }
+      });
+      updatePIDInputsVisibility();
+    }
+
+    // PID frequency selector
+    var pidFreqSelect = el('pidFrequency');
+    if (pidFreqSelect) {
+      pidFreqSelect.addEventListener('change', function () {
+        var val = parseFloat(pidFreqSelect.value);
+        if (!isNaN(val) && val > 0) queueSend({ PID_Hz: val }, 'PID Frequency');
       });
     }
 
@@ -1451,6 +1535,21 @@
     if (pidResetBtn) pidResetBtn.addEventListener('click', function () {
       ['pidPInput','pidIInput','pidDInput'].forEach(function (id) { var inp = el(id); if (inp) inp.value = ''; });
     });
+    var pidPInputEl = el('pidPInput');
+    if (pidPInputEl) pidPInputEl.addEventListener('change', function () {
+      var val = parseFloat(pidPInputEl.value);
+      if (!isNaN(val)) queueSend({ PID_P: val }, 'PID P');
+    });
+    var pidIInputEl = el('pidIInput');
+    if (pidIInputEl) pidIInputEl.addEventListener('change', function () {
+      var val = parseFloat(pidIInputEl.value);
+      if (!isNaN(val)) queueSend({ PID_I: val }, 'PID I');
+    });
+    var pidDInputEl = el('pidDInput');
+    if (pidDInputEl) pidDInputEl.addEventListener('change', function () {
+      var val = parseFloat(pidDInputEl.value);
+      if (!isNaN(val)) queueSend({ PID_D: val }, 'PID D');
+    });
 
     // ── Chart toolbar ────────────────────────────────────────────────────────
     var startCsvBtn = el('startCsvBtn'), stopCsvBtn = el('stopCsvBtn'), clearBtn = el('clearDataBtn');
@@ -1468,6 +1567,8 @@
     if (chartDisplayModeSelect) {
       chartDisplayModeSelect.addEventListener('change', function () {
         chartDisplayMode = chartDisplayModeSelect.value;
+        if (chartJsRef)   { chartJsRef.data.labels   = []; chartJsRef.data.datasets.forEach(function(d){d.data=[];}); chartJsRef.update(); }
+        if (liveChartRef) { liveChartRef.data.labels  = []; liveChartRef.data.datasets.forEach(function(d){d.data=[];}); liveChartRef.update(); }
       });
     }
 
