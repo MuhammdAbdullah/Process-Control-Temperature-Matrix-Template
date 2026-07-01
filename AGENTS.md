@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Commands
 
@@ -60,7 +60,7 @@ Incoming hardware data arrives as **two separate JSON messages per cycle**:
 1. Main data: `{T, P, F}` — current temperature, power, fan speed
 2. PID data: `{Pr, It, Dr, Ot}` — PID component values (only in PID mode)
 
-The renderer stores the PID message in `lastPidValues` and combines it with the next main data message when adding a chart point. The hardware also sends intermediate temperature-only `{T}` packets between main cycles; these are buffered in `pendingIntermediateTPackets` and flushed when the next full `{T,P,F}` message arrives. Command writes are throttled to a **40ms minimum interval** to avoid serial flooding.
+The renderer stores the PID message in `lastPidValues` and combines it with the next main data message when adding a chart point. Command writes are throttled to a **40ms minimum interval** to avoid serial flooding.
 
 ### Control Modes
 
@@ -99,7 +99,7 @@ PID mode has four sub-types (P / PI / PD / PID) that change the secondary canvas
 | [servo-speed.html](servo-speed.html) | Servo speed |
 | [servo-angle.html](servo-angle.html) | Servo angle |
 
-Each page defines `window.HARDWARE_CONFIG` before loading `renderer-hardware.js`. The config object drives unit labels, axis ranges, and any sensor-specific UI differences. `renderer-hardware.js` is a **self-contained IIFE** with its own isolated `currentMode`, `chartJsRef`, `liveChartRef`, and other local state — it does not share variables with `renderer.js`. It implements the same control-mode state machine, dual-canvas Chart.js setup, PID two-message protocol, 40ms command throttle, CSV export, and safety sequences — keep the two in sync when changing shared behaviour.
+Each page defines `window.HARDWARE_CONFIG` before loading `renderer-hardware.js`. The config object drives unit labels, axis ranges, and any sensor-specific UI differences. `renderer-hardware.js` mirrors the same control-mode state machine, dual-canvas Chart.js setup, PID two-message protocol, 40ms command throttle, CSV export, and safety sequences as `renderer.js` — keep the two in sync when changing shared behaviour.
 
 ### renderer.js Navigation Guide
 
@@ -158,9 +158,7 @@ update-status, auto-tune-progress
 bootloader-progress, hex-upload-progress
 ```
 
-If `window.electronAPI` is unavailable (web mode), renderer falls back to no-op stubs and uses `webCmd()` — a thin wrapper that sends hardware commands via `fetch('POST /api/command')` to the embedded Express server instead of IPC. This makes all control operations work identically in both Electron and browser contexts.
-
-**Web Serial API** (browser fallback): When neither Electron nor the Express server is available, `renderer.js` can connect directly to the hardware using the browser's Web Serial API. Key functions: `tryWebSerialAutoConnect()`, `requestWebSerialOnce()`, `openWebSerial()`, `closeWebSerial()`. Bootloader USB filtering uses VID=0x12BF, PID=0x010C (different from the main app PID=0x0113).
+If `window.electronAPI` is unavailable (web mode), renderer falls back to no-op stubs and optionally uses the Web Serial API.
 
 ### Startup / Shutdown Safety
 
@@ -198,12 +196,7 @@ When connected, both `main.js` and `server.js` send a heartbeat poll to the hard
 localStorage['temp-unit']   // 'C' | 'F' — persists temperature unit preference
 pendingPowerValue            // debounce buffer — echoed slider values, not yet confirmed
 pendingFanValue              // same for fan
-pendingIntermediateTPackets  // buffer for {T}-only packets between full {T,P,F} cycles
-csvSessionMode               // mode active when CSV started — determines column headers
-csvSessionPidControlType     // PID sub-type when CSV started (P/PI/PD/PID)
 ```
-
-Temperature is stored internally as Celsius. When `temp-unit` is `'F'`, the UI converts display values via `celsiusToFahrenheit()` / `fahrenheitToCelsius()` and adjusts target temperature slider ranges (20–70°C → 68–158°F).
 
 ### Build & Release
 

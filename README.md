@@ -109,6 +109,10 @@ Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout:
 - VID/PID based device identification (`VID=0x12BF, PID=0x0113`)
 - Bootloader communication support
 
+#### Web Serial API (browser fallback)
+- When neither Electron IPC nor the Express server is available, `renderer.js` can connect directly to hardware via the browser's Web Serial API
+- Bootloader USB filtering uses `VID=0x12BF, PID=0x010C` (differs from main app `PID=0x0113`)
+
 #### Hardware JSON Protocol
 
 Commands sent to hardware:
@@ -163,7 +167,7 @@ Incoming data arrives as two separate JSON messages per cycle:
 - Accessible from any device on the local network
 - PWA-ready (`manifest.json`) for tablet home-screen install
 - Responsive layout for touch devices
-- Falls back gracefully when Electron IPC is unavailable — browser clients use fetch/SSE via `setupServerBridge()`
+- Falls back gracefully when Electron IPC is unavailable — browser clients use `webCmd()` (thin fetch wrapper) and SSE via `setupServerBridge()`
 
 #### Embedded Web Server (Electron desktop — v0.1.6)
 
@@ -224,6 +228,8 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 | [servo-speed.html](servo-speed.html) | Servo speed sensor page |
 | [servo-angle.html](servo-angle.html) | Servo angle sensor page |
 | [assets/css/matrix-ui.css](assets/css/matrix-ui.css) | DaisyUI + Tailwind UI styles |
+| [CLAUDE.md](CLAUDE.md) | Developer guidance for Claude Code (AI assistant) |
+| [AGENTS.md](AGENTS.md) | Developer guidance for Codex (AI assistant) |
 
 ---
 
