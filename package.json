@@ -1,7 +1,7 @@
 {
-  "name": "process-control-temperature-app",
+  "name": "process-control-v2",
   "version": "0.1.9",
-  "description": "Process Control Temperature - Web App for Android Tablets",
+  "description": "Process Control V2 - Web App for Android Tablets",
   "main": "main.js",
   "scripts": {
     "prestart": "node scripts/ensure-utf8.js",
@@ -17,7 +17,7 @@
   "keywords": [
     "electron",
     "com-port",
-    "process-control-temperature",
+    "process-control-v2",
     "serial",
     "web-app",
     "android",
@@ -39,12 +39,12 @@
     "serialport": "^12.0.0"
   },
   "build": {
-    "appId": "com.processcontrol.temperature-app",
-    "productName": "Process Control Temperature App",
+    "appId": "com.processcontrol.v2",
+    "productName": "Process Control V2",
     "publish": {
       "provider": "github",
       "owner": "MuhammdAbdullah",
-      "repo": "Process-Control-Temperature-Matrix-Template"
+      "repo": "Process-Control-V2"
     },
     "directories": {
       "output": "dist"
@@ -68,7 +68,7 @@
     "win": {
       "target": "nsis",
       "icon": "icon.ico",
-      "artifactName": "Process-Control-Temperature-App-Setup-${version}.${ext}"
+      "artifactName": "Process-Control-V2-Setup-${version}.${ext}"
     }
   }
 }

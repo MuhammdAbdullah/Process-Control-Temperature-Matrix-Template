@@ -1,4 +1,4 @@
-# Process Control App — Matrix Template
+# Process Control V2
 
 > Desktop application for multi-sensor laboratory process control, with built-in browser access for tablets and phones on the same network — built by Matrix TSL.
 

@@ -200,6 +200,6 @@ pendingFanValue              // same for fan
 
 ### Build & Release
 
-GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags, uses Node 20, runs `npm run build-win` only, and uploads the `.exe`, `.exe.blockmap`, and `latest.yml` to a GitHub Release. The published repo is `MuhammdAbdullah/Process-Control-Temperature-Matrix-Template`.
+GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags, uses Node 20, runs `npm run build-win` only, and uploads the `.exe`, `.exe.blockmap`, and `latest.yml` to a GitHub Release. The published repo is `MuhammdAbdullah/Process-Control-V2`.
 
 `scripts/ensure-utf8.js` runs automatically before `npm start` (`prestart` hook) — it walks all `.html`/`.js`/`.css`/`.json` files and converts any UTF-16 files to UTF-8. This guards against PowerShell's default UTF-16 encoding corrupting source files on Windows.

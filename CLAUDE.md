@@ -22,7 +22,7 @@ No test suite exists. Minimum Node.js version: 16+.
 
 ## Architecture
 
-This is an **Electron desktop app** (v0.1.8, Electron 38) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
+This is an **Electron desktop app** (v0.1.9, Electron 43) for laboratory temperature process control. It also runs as an **Express web server** (`server.js`) for tablet access — both modes share the same `index.html`/`renderer.js` frontend.
 
 ### Process Boundary
 
@@ -207,6 +207,6 @@ Temperature is stored internally as Celsius. When `temp-unit` is `'F'`, the UI c
 
 ### Build & Release
 
-GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags, uses Node 20, runs `npm run build-win` only, and uploads the `.exe`, `.exe.blockmap`, and `latest.yml` to a GitHub Release. The published repo is `MuhammdAbdullah/Process-Control-Temperature-Matrix-Template`.
+GitHub Actions (`.github/workflows/release.yml`) triggers on `v*.*.*` tags, uses Node 20, runs `npm run build-win` only, and uploads the `.exe`, `.exe.blockmap`, and `latest.yml` to a GitHub Release. The published repo is `MuhammdAbdullah/Process-Control-V2`.
 
 `scripts/ensure-utf8.js` runs automatically before `npm start` (`prestart` hook) — it walks all `.html`/`.js`/`.css`/`.json` files and converts any UTF-16 files to UTF-8. This guards against PowerShell's default UTF-16 encoding corrupting source files on Windows.
