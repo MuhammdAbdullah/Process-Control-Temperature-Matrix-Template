@@ -1,31 +1,32 @@
-# Process Control Temperature App — Matrix Template
+# Process Control App — Matrix Template
 
-> Desktop and web application for laboratory temperature process control — built by Matrix TSL.
+> Desktop application for multi-sensor laboratory process control, with built-in browser access for tablets and phones on the same network — built by Matrix TSL.
 
-**Version:** `0.1.9` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.9` &nbsp;|&nbsp; **Platform:** Windows (Electron desktop) &nbsp;|&nbsp; **License:** MIT
 
-> **Status: Stable — Hardware auto-routing + landing page.**
-> Supports Temperature, Pressure, Flow, Level, Servo Speed, and Servo Angle sensor pages — all driven by a shared `renderer-hardware.js` control engine. The app now opens a landing page on startup and auto-navigates to the correct sensor page based on the `{A: X}` hardware ID broadcast.
+> **Status: Stable** — Hardware auto-routing + landing page. Supports Temperature, Pressure, Flow, Level, Servo Speed, and Servo Angle sensor pages — all driven by a shared `renderer-hardware.js` control engine.
 
 ---
 
 ## Overview
 
-This app connects to a hardware temperature controller over Serial or USB HID and provides:
+This app connects to a hardware process controller over Serial or USB HID and provides:
 
-- Real-time monitoring and control of heater temperature, power, and fan speed
-- Three control modes: Manual, On/Off, and PID
-- Live dual-canvas charting (temperature + power/PID output)
+- Real-time monitoring and control across six sensor types
+- Three control modes on every sensor page: **Manual**, **On/Off**, and **PID**
+- Live dual-canvas charting (process variable + output/PID terms)
 - Admin panel with logs, bootloader, and firmware update tools
-- Runs as an Electron desktop app **or** a local Express web server for tablet access
-- **Phone/tablet mirroring** — embedded web server in desktop app; scan QR code to open full UI on any device on the local network
+- **Primary deployment:** Electron desktop app — installed on the lab PC with hardware connected
+- **Tablet / phone access:** built-in embedded server starts automatically with the desktop app; scan the QR code to open the full UI in any browser on the same network — no installation needed on the tablet
+- **Headless server mode** (`npm run web`) — for lab PCs or Raspberry Pi where no GUI is needed; still requires Node.js + hardware physically connected to the host machine
 - Live SSE data stream — hardware data pushed to all connected browsers in real time
+- **Hardware auto-routing** — app reads `{A: X}` hardware ID on connect and auto-navigates to the matching sensor page
 
 ---
 
 ## Screenshots
 
-![Process Control Temperature Dashboard](assets/PID%20app%20image.png)
+![Process Control App Dashboard](assets/PID%20app%20image.png)
 
 ---
 
@@ -57,39 +58,189 @@ npm start          # run as Electron desktop app
 
 ---
 
-## Features
+## Sensor Pages
 
-### Control Modes
+The app opens a landing page on startup and auto-navigates to the correct sensor page based on the `{A: X}` hardware ID broadcast. Six sensor types are supported:
 
-#### Manual Mode
-- Set heater power (`0–100%`) and fan speed (`0–100%`) directly
-- Preset quick-value buttons + slider controls
+| Hardware ID | Page | Sensor | Unit |
+|-------------|------|--------|------|
+| 201 | [index.html](index.html) | Temperature | °C / °F |
+| 202 | [pressure.html](pressure.html) | Pressure | (configured per device) |
+| 203 | [level.html](level.html) | Level | (configured per device) |
+| 204 | [flow.html](flow.html) | Flow | (configured per device) |
+| 205 | [servo-speed.html](servo-speed.html) | Servo Speed | RPM (0–60) |
+| 206 | [servo-angle.html](servo-angle.html) | Servo Angle | ° (−180–180) |
 
-#### On/Off Mode
-- Target temperature: `20–70 °C`
-- Hysteresis: `1, 2, 3, 4, 5, 10 °C`
-- Fan speed control
-- Automatic heater on/off cycling around target ± hysteresis
-
-#### PID Mode
-- Target temperature: `20–70 °C`
-- Configurable P, I, D gains
-- Control type selector: `P`, `PI`, `PD`, `PID`
-- Frequency setting
-- Fan speed control
-- PID component values streamed live from hardware
+All six pages share the same three control modes and the same `renderer-hardware.js` engine. Only axis ranges, unit labels, and sensor-specific UI details differ.
 
 ---
 
-### Real-Time Charts
+## Control Modes
 
-Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout:
+All sensor pages support three control modes. Switching modes sends a safety reset to the hardware and reinitializes the chart.
+
+---
+
+### Manual Mode
+
+Direct open-loop control — the operator sets output values explicitly with no feedback from the sensor.
+
+**How it works:**
+- Set the primary output (e.g. heater power, servo drive) with a slider or preset buttons (`0–100%`, or device-specific range)
+- Set fan/secondary output independently
+- Hardware executes the command immediately; the sensor reading is displayed in real time but does not influence the output
+
+**Chart:**
+| Canvas | Dataset |
+|--------|---------|
+| Primary | Process variable (temperature, speed, angle, etc.) |
+| Secondary | Output % |
+
+**Hardware command:** `{C: 1, P: <value>, F: <fan>}`
+
+**Typical use:** commissioning, open-loop characterization, manual override
+
+---
+
+### On/Off Mode
+
+Hysteresis-based two-state control — the hardware switches the actuator fully on or fully off based on a setpoint and a dead-band.
+
+**How it works:**
+- Set a **target setpoint** in sensor units (e.g. 20–70 °C, 0–60 RPM, −180°–180°, etc.)
+- Set a **hysteresis** band — the dead-band around the setpoint in sensor units
+- Hardware turns the actuator **on** when the process variable drops below `setpoint − hysteresis` and **off** when it rises above `setpoint + hysteresis`
+- Fan/secondary output is independently controlled
+
+**Parameters:**
+| Parameter | Range | Description |
+|-----------|-------|-------------|
+| Target setpoint | Sensor min–max | Desired process value |
+| Hysteresis | 1–10 (device units) | Dead-band around setpoint |
+| Fan speed | 0–100 % | Secondary output |
+
+**Chart:**
+| Canvas | Dataset |
+|--------|---------|
+| Primary | Process variable, target line, upper hysteresis band, lower hysteresis band |
+| Secondary | Output % |
+
+**Hardware command:** `{C: 2, T: <setpoint>, Y: <hysteresis>, F: <fan>}`
+
+**Typical use:** simple regulators, on/off valve control, bang-bang level or speed control
+
+---
+
+### PID Mode
+
+Closed-loop proportional–integral–derivative control — the hardware computes a continuous output signal that drives the process variable to the setpoint.
+
+**How it works:**
+- Set a **target setpoint**
+- Configure **P**, **I**, and **D** gains individually
+- Select a **PID sub-type** (`P`, `PI`, `PD`, or full `PID`) — unused terms are zeroed
+- Set a **PID frequency** (update rate sent to hardware)
+- The hardware streams back PID component values (`Pr`, `It`, `Dr`, `Ot`) each cycle, which are overlaid on the secondary chart
+
+**Parameters:**
+| Parameter | Description |
+|-----------|-------------|
+| Target setpoint | Desired process value |
+| Proportional gain (P) | Scales the current error |
+| Integral gain (I) | Accumulates past error (eliminates steady-state offset) |
+| Derivative gain (D) | Predicts future error (reduces overshoot) |
+| Control type | `P` / `PI` / `PD` / `PID` — selects active terms |
+| PID frequency | Hardware update rate |
+| Fan/secondary | Independent secondary output |
+
+**PID sub-types and secondary canvas datasets:**
+
+| Sub-type | Active terms | Secondary canvas datasets |
+|----------|-------------|--------------------------|
+| P | Proportional only | Output |
+| PI | Proportional + Integral | Output, P term, I term |
+| PD | Proportional + Derivative | Output, P term, D term |
+| PID | All three | Output, P term, I term, D term |
+
+**Hardware data cycle (two messages per cycle):**
+1. Main data: `{T: <pv>, P: <output>, F: <fan>}`
+2. PID data: `{Pr: <proportional>, It: <integral>, Dr: <derivative>, Ot: <output>}` — PID mode only
+
+The renderer stores the PID message in `lastPidValues` and merges it with the next main data message when plotting.
+
+**Chart:**
+| Canvas | Dataset |
+|--------|---------|
+| Primary | Process variable, target line |
+| Secondary | PID output + active PID term traces (1–4 datasets depending on sub-type) |
+
+**Hardware commands:**
+```json
+{ "C": 3 }                   // switch to PID mode
+{ "PID_P": 3.162 }           // set proportional gain
+{ "PID_I": 0.01  }           // set integral gain
+{ "PID_D": 150   }           // set derivative gain
+{ "T": 45        }           // set target setpoint
+{ "F": 50        }           // set fan speed
+```
+
+**Default gains:** `P = 3.162`, `I = 0.01`, `D = 150` (factory defaults; user-saved values persist in `localStorage`)
+
+**Typical use:** precise setpoint tracking, laboratory experiments, closed-loop characterization
+
+---
+
+## Servo Pages
+
+The servo pages share the same three control modes as every other sensor page, but the sensor axis and output range reflect servo-specific values.
+
+### Servo Speed (`servo-speed.html`)
+
+Controls and monitors the rotational speed of a servo motor.
+
+| Property | Value |
+|----------|-------|
+| Sensor label | Speed |
+| Unit | RPM |
+| Sensor range | 0–60 RPM |
+| Primary output key | `P` (Drive) |
+| Output range | −50 to +50 |
+| Secondary output | None |
+
+**Manual mode** — set the drive value directly (−50 to +50) to command a fixed motor speed.  
+**On/Off mode** — the hardware switches the drive on or off to maintain a target speed within a hysteresis band.  
+**PID mode** — the hardware computes a continuous drive signal to hold the speed at the setpoint; P, PI, PD, and full PID sub-types are available.
+
+### Servo Angle (`servo-angle.html`)
+
+Controls and monitors the angular position of a servo.
+
+| Property | Value |
+|----------|-------|
+| Sensor label | Angle |
+| Unit | ° (degrees) |
+| Sensor range | −180° to +180° |
+| Primary output key | `P` (Drive) |
+| Output range | −50 to +50 |
+| Secondary output | None |
+
+**Manual mode** — set the drive value directly to command a fixed actuator drive.  
+**On/Off mode** — the hardware switches the drive on or off to keep the angle within a hysteresis band around the setpoint.  
+**PID mode** — the hardware drives the actuator continuously to track a target angle; all four PID sub-types (P / PI / PD / PID) are available.
+
+Both servo pages use `renderer-hardware.js` configured via `window.HARDWARE_CONFIG` and implement the same PID two-message protocol, 40 ms command throttle, CSV export, and safety sequences as all other sensor pages.
+
+---
+
+## Real-Time Charts
+
+Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout on every sensor page:
 
 | Mode | Primary Canvas | Secondary Canvas |
 |------|---------------|-----------------|
-| Manual | Heater Temperature | Power % |
-| On/Off | Temp, Target, Hysteresis bands | Power % |
-| PID | Temp, Target | Output + active PID terms |
+| Manual | Process variable | Output % |
+| On/Off | PV, target, upper/lower hysteresis bands | Output % |
+| PID | PV, target | Output + active PID term traces |
 
 - Auto-pauses chart plotting after **20 minutes** of no user interaction (sensor readings and CSV logging continue uninterrupted)
 - Resumes automatically on the next control change
@@ -97,44 +248,49 @@ Built with [Chart.js](https://www.chartjs.org/) — dual canvas layout:
 
 ---
 
-### Hardware Communication
+## Hardware Communication
 
-#### Serial (COM Port)
+### Serial (COM Port)
 - Auto port detection and manual selection
 - Baud rates: `9600` to `115200`
 - Connection status display and reconnect handling
 
-#### USB HID
+### USB HID
 - `node-hid` native bindings
 - VID/PID based device identification (`VID=0x12BF, PID=0x0113`)
 - Bootloader communication support
 
-#### Web Serial API (browser fallback)
+### Web Serial API (browser fallback)
 - When neither Electron IPC nor the Express server is available, `renderer.js` can connect directly to hardware via the browser's Web Serial API
 - Bootloader USB filtering uses `VID=0x12BF, PID=0x010C` (differs from main app `PID=0x0113`)
 
-#### Hardware JSON Protocol
+### Hardware JSON Protocol
 
 Commands sent to hardware:
 
 | Key | Value | Meaning |
 |-----|-------|---------|
 | `C` | `1 / 2 / 3` | Control mode: Manual / On/Off / PID |
-| `P` | `0–100` | Heater power % |
-| `F` | `0–100` | Fan speed % |
-| `T` | `20–70` | Target temperature (°C) |
-| `Y` | `1–10` | Hysteresis (On/Off mode, °C) |
+| `P` | `0–100` (or device range) | Primary output (heater power %, drive, etc.) |
+| `F` | `0–100` | Fan / secondary output % |
+| `T` | setpoint value | Target setpoint |
+| `Y` | `1–10` | Hysteresis (On/Off mode, device units) |
 | `PID_P / PID_I / PID_D` | numeric | PID gains |
-| `H` | `0 / 1` | Heater off / on |
+| `H` | `0 / 1` | Heater off / on (temperature page only) |
+| `A` | hardware ID | Hardware type identifier (sent by device on connect) |
 
-Incoming data arrives as two separate JSON messages per cycle:
+Incoming data arrives as **two separate JSON messages per cycle**:
 
-1. **Main data**: `{"T": 25.5, "P": 45.2, "F": 50}` — temperature, power, fan
-2. **PID data**: `{"Pr": 5.67, "It": 2.89, "Dr": 1.23, "Ot": 12.34}` — PID component values (PID mode only)
+1. **Main data:** `{"T": 25.5, "P": 45.2, "F": 50}` — process variable, output, secondary output
+2. **PID data:** `{"Pr": 5.67, "It": 2.89, "Dr": 1.23, "Ot": 12.34}` — PID component values (PID mode only)
+
+Hardware also sends intermediate `{T}`-only packets between full cycles; these are buffered in `pendingIntermediateTPackets` and flushed equally distributed when the next full `{T, P, F}` message arrives.
+
+Command writes are **throttled to a 40 ms minimum interval** to avoid serial flooding.
 
 ---
 
-### Admin Panel
+## Admin Panel
 
 | Section | Features |
 |---------|---------|
@@ -145,33 +301,44 @@ Incoming data arrives as two separate JSON messages per cycle:
 
 ---
 
-### Safety & Reliability
+## Safety & Reliability
 
 - **On connect:** hardware initialization sequence sent automatically
 - **On close / mode switch:** safe shutdown sequence — sets `C=1, F=0, P=0, T=20, H=0`, PID gains = 0
-- 40 ms minimum command write interval to avoid serial flooding
+- **On reconnect:** charts are cleared and the UI resets to Manual mode; a 1 s debounced delay sends `C:1` to avoid command stacking during unstable reconnects
+- **40 ms minimum command write interval** to avoid serial flooding
+- **Keepalive heartbeat** every 900 ms detects disconnects; consecutive failures trigger automatic reconnect
 
 ---
 
-### Data Export
+## Data Export
 
-- CSV data export (mode-specific headers, started/stopped from UI)
+- CSV export per sensor page (mode-specific column headers, started/stopped from UI)
 - System log export
 - Raw stream export
 
 ---
 
-### Web / Tablet Mode
+## Tablet & Browser Access
 
-- `npm run web` serves `index.html` via Express on port 3000 with **real SerialPort integration** (no mocks)
-- Accessible from any device on the local network
-- PWA-ready (`manifest.json`) for tablet home-screen install
-- Responsive layout for touch devices
-- Falls back gracefully when Electron IPC is unavailable — browser clients use `webCmd()` (thin fetch wrapper) and SSE via `setupServerBridge()`
+This is a **desktop application** — it is not a hosted web app. Browser/tablet access works in two ways:
 
-#### Embedded Web Server (Electron desktop — v0.1.6)
+### Option A — Tablet mirror via the desktop app (most common)
 
-When running as the desktop app, an Express server starts automatically on a free LAN port. The UI shows the server URL and a **QR code** — scan it from any phone or tablet to open the full control interface in a browser.
+When the Electron desktop app is running, an embedded Express server starts automatically on a free LAN port. The desktop UI shows the server URL and a **QR code** — scan it from any phone or tablet to open the full control interface in a browser on the same network. The desktop app must be running; tablets do not install anything.
+
+### Option B — Headless server mode (`npm run web`)
+
+For environments where a GUI-less host is preferred (dedicated lab PC, Raspberry Pi), `server.js` can be run without launching an Electron window. The hardware must still be physically connected to the machine running the server. Any browser on the same network can then connect.
+
+```bash
+npm run web   # starts Express server, no Electron window
+```
+
+Both options:
+- Are PWA-ready (`manifest.json`) — add to tablet home screen for an app-like experience
+- Use a responsive layout for touch devices
+- Fall back gracefully via `webCmd()` (thin fetch wrapper) and SSE via `setupServerBridge()` when Electron IPC is unavailable
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -180,6 +347,7 @@ When running as the desktop app, an Express server starts automatically on a fre
 | `/api/ports` | GET | List available serial ports |
 | `/api/connect` | POST | Connect to a serial port |
 | `/api/disconnect` | POST | Disconnect from hardware |
+| `/api/state` | GET | Current shared state + connection info |
 | `/api/server-info` | GET | Network IPs, URL, QR code |
 
 ---
@@ -194,16 +362,22 @@ main.js  (Electron main process)
   ├── electron-updater          →  GitHub release auto-updates
   └── preload.js                →  secure IPC bridge (context isolation)
 
-server.js  (standalone Express — npm run web)
-  ├── Real SerialPort           →  direct hardware bridge (replaces mock endpoints)
+server.js  (headless server — npm run web, hardware must be connected to this machine)
+  ├── Real SerialPort           →  direct hardware bridge (no Electron window)
   ├── SSE /api/events           →  pushes json-data & connection-status to browsers
   └── REST /api/*               →  ports, connect, disconnect, command, server-info
 
-renderer.js  (Electron renderer / browser, ~6100 lines)
-  ├── Chart.js (dual canvas)   →  primary (temps) + secondary (power/PID)
-  ├── setupServerBridge()      →  replaces IPC stubs with fetch/SSE when running in browser
+renderer.js  (temperature sensor page — Electron renderer / browser, ~6100 lines)
+  ├── Chart.js (dual canvas)   →  primary (PV) + secondary (output/PID)
+  ├── setupServerBridge()      →  replaces IPC stubs with fetch/SSE in browser mode
   ├── UI state machine         →  control modes, form values, chart datasets
   └── inactivity logic         →  pauses chart after 20 min idle
+
+renderer-hardware.js  (all other sensor pages — self-contained IIFE)
+  ├── Same control-mode state machine as renderer.js
+  ├── Same dual-canvas Chart.js setup and PID two-message protocol
+  ├── Driven by window.HARDWARE_CONFIG per page
+  └── Isolated state — does not share variables with renderer.js
 ```
 
 Context isolation is enabled. `preload.js` exposes only a narrow `window.electronAPI` surface — `nodeIntegration` is disabled in the renderer.
@@ -216,21 +390,21 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 |------|---------|
 | [main.js](main.js) | Hardware I/O, IPC handlers, safety sequences, bootloader |
 | [preload.js](preload.js) | IPC bridge (context isolation) |
-| [renderer.js](renderer.js) | Temperature page UI logic (~6100 lines): control modes, charting, CSV export |
-| [renderer-hardware.js](renderer-hardware.js) | Shared renderer for all non-temperature sensor pages; driven by `window.HARDWARE_CONFIG` |
-| [layout.js](layout.js) | Clock, mode toggle, temperature display sync |
-| [server.js](server.js) | Express server for web/tablet deployment |
+| [renderer.js](renderer.js) | Temperature sensor page UI logic (~6100 lines): control modes, charting, CSV export |
+| [renderer-hardware.js](renderer-hardware.js) | Shared renderer for Pressure, Flow, Level, Servo Speed, and Servo Angle pages; driven by `window.HARDWARE_CONFIG` |
+| [layout.js](layout.js) | Clock, mode toggle, live reading display sync |
+| [server.js](server.js) | Standalone Express server for web/tablet deployment |
 | [landing.html](landing.html) | Startup landing page — hardware status banner + auto-routing on `{A: X}` |
 | [admin.html](admin.html) | Admin panel: logs, raw data, bootloader, updates |
 | [index.html](index.html) | Temperature sensor page |
 | [pressure.html](pressure.html) | Pressure sensor page |
 | [flow.html](flow.html) | Flow sensor page |
 | [level.html](level.html) | Level sensor page |
-| [servo-speed.html](servo-speed.html) | Servo speed sensor page |
-| [servo-angle.html](servo-angle.html) | Servo angle sensor page |
+| [servo-speed.html](servo-speed.html) | Servo speed sensor page (0–60 RPM) |
+| [servo-angle.html](servo-angle.html) | Servo angle sensor page (−180°–180°) |
 | [assets/css/matrix-ui.css](assets/css/matrix-ui.css) | DaisyUI + Tailwind UI styles |
-| [CLAUDE.md](CLAUDE.md) | Developer guidance for Claude Code (AI assistant) |
-| [AGENTS.md](AGENTS.md) | Developer guidance for Codex (AI assistant) |
+| [CLAUDE.md](CLAUDE.md) | Developer guidance for Claude Code |
+| [AGENTS.md](AGENTS.md) | Developer guidance for Codex |
 
 ---
 
@@ -245,6 +419,7 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 | `express` | `^4.21.2` |
 | `serialport` | `^12.0.0` |
 | `node-hid` | `^3.1.1` |
+| `qrcode` | latest |
 
 ---
 
@@ -252,7 +427,7 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 
 - **OS:** Windows 10 / 11 recommended (cross-platform build support exists)
 - **Node.js:** 16+
-- **Hardware:** Compatible temperature control unit (Serial or USB HID)
+- **Hardware:** Compatible process control unit (Serial or USB HID)
 
 For native module builds on Windows you may also need:
 - Python
@@ -288,11 +463,12 @@ For native module builds on Windows you may also need:
 ## Usage
 
 1. Connect hardware via Serial COM port or USB HID
-2. Select a control mode: **Manual**, **On/Off**, or **PID**
-3. Set values (power, fan speed, target temperature, PID gains)
-4. Monitor live chart data
-5. Open the Admin Panel for logs, firmware updates, and bootloader tools
-6. Export data to CSV when needed
+2. The app auto-navigates to the matching sensor page based on the `{A: X}` hardware ID
+3. Select a control mode: **Manual**, **On/Off**, or **PID**
+4. Set values (output, setpoint, hysteresis, or PID gains as appropriate)
+5. Monitor live chart data on both canvases
+6. Open the Admin Panel for logs, firmware updates, and bootloader tools
+7. Export data to CSV when needed
 
 ---
 
@@ -301,96 +477,65 @@ For native module builds on Windows you may also need:
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
 ### v0.1.9 (current)
-- **Landing page** — app now opens [`landing.html`](landing.html) on startup instead of a splash screen; displays hardware status banner and product cards for all six sensor types
-- **Hardware auto-routing** — when the device sends `{A: X}` on connect, the app reads the hardware ID (201–206) and auto-navigates to the matching sensor page (Temperature / Pressure / Level / Flow / Servo Speed / Servo Angle) after a 1.2 s delay so the landing banner can show confirmation
+- **Landing page** — app now opens `landing.html` on startup; displays hardware status banner and product cards for all six sensor types
+- **Hardware auto-routing** — when the device sends `{A: X}` on connect, the app reads the hardware ID (201–206) and auto-navigates to the matching sensor page after a 1.2 s delay
 - **`open-external-url` IPC** — landing page product links open in the system browser via `shell.openExternal` (gated to `http/https` URLs only)
-- **`hardware-id-received` event** — `preload.js` exposes `onHardwareIdReceived` callback so landing page can react to `{A: X}` without polling
-- **Electron upgraded** — `electron` `^38.2.2` → `^43.1.0`; `electron-builder` `^24.13.3` → `^26.15.3`
-- **Sensor product images** — added `.webp` assets for all six sensor types (`Process-Control-*-WEB.webp`)
-- **Reconnect mode restore** — after serial/USB reconnect, renderer now restores the control mode the user had active before disconnect (rather than always resetting to Manual)
+- **`hardware-id-received` event** — `preload.js` exposes `onHardwareIdReceived` callback so the landing page can react to `{A: X}` without polling
+- **Electron upgraded** — `^38.2.2` → `^43.1.0`; `electron-builder` `^24.13.3` → `^26.15.3`
+- **Sensor product images** — added `.webp` assets for all six sensor types
+- **Reconnect mode restore** — after reconnect, renderer restores the control mode active before disconnect (rather than always resetting to Manual)
 - **`splash.html` removed** — superseded by `landing.html`
 
 ### v0.1.8
-- **Multi-sensor suite** — added Pressure, Flow, Level, Servo Speed, and Servo Angle pages; all share a single `renderer-hardware.js` engine configured via `window.HARDWARE_CONFIG`
-- **Intermediate T-only packet buffering** — `renderer.js` now buffers `{T}` packets (without P/F) and flushes them to the chart equally distributed between main data packets, preserving accurate timestamps
-- **Auto-reconnect UX** — on serial/USB reconnect, charts are cleared and the UI resets to Manual mode; a debounced 1 s delay sends `C:1` to the device to avoid command stacking during unstable connects
-- **Slider drag fix** — sliders update the UI live on `input` but only send the hardware command on `change` (release), preventing serial flooding during drag
-- **PID input visibility** — I and D input containers are shown/hidden automatically based on the selected PID sub-type (P / PI / PD / PID) on all hardware pages
-- **Per-field PID send** — P, I, D gain inputs each send their value to hardware individually on `change`
-- **PID frequency listener** — PID frequency selector on hardware pages sends `PID_Hz` to hardware on change, and also sends it automatically when switching to PID mode
-- **Hardware type navigation** — navigation to another sensor page now awaits the `sendCustomJson` promise before redirecting, with error logging on failure
-- **Fixed `/api/command` POST body** — web-mode command payloads were incorrectly wrapped; now sent as the raw command object
-- **Hysteresis floor fix** — On/Off lower hysteresis band now clamps to `CFG.sensor.min` instead of hardcoded `0`
-- **`_skipDisconnectOnUnload` flag** — prevents spurious hardware disconnect when navigating between sensor pages
+- **Multi-sensor suite** — added Pressure, Flow, Level, Servo Speed, and Servo Angle pages; all share `renderer-hardware.js` configured via `window.HARDWARE_CONFIG`
+- **Intermediate T-only packet buffering** — `renderer.js` buffers `{T}` packets and flushes them equally distributed between main data packets
+- **Auto-reconnect UX** — charts cleared and UI resets to Manual mode on reconnect; debounced 1 s delay before sending `C:1`
+- **Slider drag fix** — sliders send the hardware command on `change` (release) only, not on every `input` event
+- **PID input visibility** — I and D containers shown/hidden automatically based on active PID sub-type
+- **Per-field PID send** — P, I, D gain inputs each send to hardware individually on `change`
+- **Hysteresis floor fix** — On/Off lower band clamps to `CFG.sensor.min` instead of hardcoded `0`
 
 ### v0.1.6
-- **Embedded web server** — Electron desktop app now starts an Express server on a free LAN port; displays URL and QR code for instant phone/tablet access
-- **SSE data stream** — hardware data (`json-data`, `connection-status`) pushed to all connected browsers via `GET /api/events` (Server-Sent Events); 20 s keep-alive ping to prevent mobile browser disconnects
-- **`server.js` fully rewritten** — replaced all mock API endpoints with real `serialport` integration; REST API for port listing, connect, disconnect, and command forwarding; shared state with SSE broadcast
-- **`setupServerBridge()`** in renderer — browser clients transparently swap Electron IPC stubs for fetch/SSE implementations so the same `renderer.js` works in both Electron and browser mode
-- **Shared control state** (`sharedState`) in `main.js` — single source of truth for control mode, fan, power, target temp, PID gains, and live sensor readings across desktop + web clients
-- **Pending-value guards** — `pendingPowerValue` / `pendingFanValue` prevent hardware echo from snapping sliders back while a command is in flight
-- External URLs (phone/tablet access URL) open in system browser via `shell.openExternal` instead of a new Electron window
-- QR code package (`qrcode`) added to dependencies
+- **Embedded web server** — Electron desktop app starts an Express server on a free LAN port; shows URL and QR code for phone/tablet access
+- **SSE data stream** — hardware data pushed to all connected browsers via `GET /api/events`
+- **`server.js` fully rewritten** — replaced all mock endpoints with real `serialport` integration
+- **`setupServerBridge()`** in renderer — browser clients swap Electron IPC stubs for fetch/SSE transparently
+- **Shared control state** (`sharedState`) in `main.js` — single source of truth across desktop + web clients
 
 ### v0.1.5
-- Bump version to 0.1.5 and remove deleted `admin.html` from build file list
-- Added **Back to Main App** button in admin tab bar for one-click return to main interface
-- Sidebar automatically hides when navigating to the admin page and restores on exit
-- PID default gains now fall back to `localStorage` values (`pid-default-P/I/D`) instead of compile-time constants; inputs pre-populated from saved defaults on startup
-- Changing PID gains in admin panel now immediately syncs values to main app PID input fields (and vice versa on Restore to Default)
-- Admin log system refactored: now uses persistent session history (`liveLogEntries`) stored in `localStorage` — logs survive page reload
-- Session tracking added to admin: sessions start/end on serial connect/disconnect, logged with port label
-- Scrollbar in admin log and raw data panels improved — wider (8 px) with higher-contrast thumb for better usability
-- Filtered high-frequency noise from system log: `QL` heartbeat packets and chart data-update events no longer appear as log entries
-- Removed redundant "Switched to X tab" log entries
-- Removed "Clear Logs" and "Reset App" buttons from admin controls panel
-- `window.switchToApp` exposed globally for cross-module navigation
+- Admin panel moved inline into main window
+- PID default gains fall back to `localStorage` values; inputs pre-populated from saved defaults on startup
+- PID gains in admin panel sync live with main app PID input fields
+- Admin log system refactored: persistent session history in `localStorage`
+- Session tracking added: sessions logged with port label on connect/disconnect
 
 ### v0.1.4
-- Admin panel moved inline into main window — no longer opens as a separate Electron window
-- Added **Integral Windup** toggle control in PID mode (PI sub-type only)
-- PID default gains now persist in `localStorage`; added **Restore to Default** button (`P=3.162, I=0.01, D=150`)
-- Bootloader Connect button starts disabled; auto-enables and auto-connects USB HID after Trigger Bootloader succeeds
-- Added `check-bootloader-device` IPC to poll for USB HID presence before connecting
-- Erase-Program-Verify now shows live progress at each step (erase → program → verify)
-- Bootloader flash batch inter-write delay reduced from 100 ms to 2 ms (significantly faster programming)
-- Bootloader READ_CRC retries reduced to 3 with 2 s base delay (was 5 retries / 8 s)
-- Chart reinitializes to Manual mode automatically on hardware reconnect
-- Web server (`server.js`) sets `Cache-Control: no-store` on HTML responses to prevent stale UI after reload
-- Removed verbose per-batch bootloader console logging; only milestone batches are logged
+- Admin panel moved inline into main window — no longer a separate Electron window
+- Added Integral Windup toggle in PID mode (PI sub-type only)
+- PID default gains persist in `localStorage`; Restore to Default button added (`P=3.162, I=0.01, D=150`)
+- Bootloader Connect auto-enables and auto-connects USB HID after Trigger Bootloader succeeds
+- Erase-Program-Verify shows live progress at each step
 
 ### v0.1.3
-- Project cleanup: removed orphaned files (`chart.html`, `renderer-web.js`, backup HTMLs, `inject_slider_css.js`, `chart-page.js`)
-- Removed unused vendored 3D libs from `assets/libs/` (Three.js, OCCT, GLTFLoader, OrbitControls — ~7.5 MB)
-- Removed unused npm packages (`occt-import-js`, `three`, `jimp`, `to-ico`) — 70 packages pruned
-- Fixed `package.json` build file list (removed 9 non-existent file references; added missing `layout.js`)
+- Project cleanup: removed orphaned files and unused vendored 3D libs (~7.5 MB)
+- Removed unused npm packages — 70 packages pruned
 
 ### v0.1.2
 - UI migrated to DaisyUI + Tailwind CSS design system
 - Improved layout for desktop and tablet
-- Removed heavy 3D viewer from codebase
 
 ### v0.0.3 (February 4, 2026)
-- Fixed chart shadow/fill rendering artifacts — clean line display
+- Fixed chart shadow/fill rendering artifacts
 - Improved chart cleanup and re-initialization on mode switch
 - Added stale-data skip after mode change
-- Dataset count validation for each mode and PID sub-type
-- Improved PID chart color visibility
 - Fixed target temperature input — updates on Enter/blur, not while typing
-- Fixed PID fan speed slider reference
-- Added system online/offline indicator in Admin Panel
 
 ### Unreleased (December 2024 – February 2026)
 - Two-message PID data reception (`Pr`, `It`, `Dr`, `Ot` as separate JSON)
-- `lastPidValues` merge flow — combines PID and main data for chart updates
 - Automatic safe init sequence on hardware connect
 - Automatic safe shutdown sequence on app close
 - Safe mode-switch sequence (fan off, heater off, safe target, power 0)
-- Fixed critical missing X-axis labels (lines were disappearing)
-- Fixed On/Off chart update routing
 - 20-minute inactivity chart pause (sensor data and CSV logging unaffected)
-- Restored near-instant mode switch speed
 
 ---
 
