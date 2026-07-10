@@ -2,10 +2,10 @@
 
 > Desktop and web application for laboratory temperature process control — built by Matrix TSL.
 
-**Version:** `0.1.8` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
+**Version:** `0.1.9` &nbsp;|&nbsp; **Platform:** Windows (Electron) + Web / Tablet (Express) &nbsp;|&nbsp; **License:** MIT
 
-> **Status: Stable — Multi-sensor suite.**
-> Supports Temperature, Pressure, Flow, Level, Servo Speed, and Servo Angle sensor pages — all driven by a shared `renderer-hardware.js` control engine.
+> **Status: Stable — Hardware auto-routing + landing page.**
+> Supports Temperature, Pressure, Flow, Level, Servo Speed, and Servo Angle sensor pages — all driven by a shared `renderer-hardware.js` control engine. The app now opens a landing page on startup and auto-navigates to the correct sensor page based on the `{A: X}` hardware ID broadcast.
 
 ---
 
@@ -220,6 +220,7 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 | [renderer-hardware.js](renderer-hardware.js) | Shared renderer for all non-temperature sensor pages; driven by `window.HARDWARE_CONFIG` |
 | [layout.js](layout.js) | Clock, mode toggle, temperature display sync |
 | [server.js](server.js) | Express server for web/tablet deployment |
+| [landing.html](landing.html) | Startup landing page — hardware status banner + auto-routing on `{A: X}` |
 | [admin.html](admin.html) | Admin panel: logs, raw data, bootloader, updates |
 | [index.html](index.html) | Temperature sensor page |
 | [pressure.html](pressure.html) | Pressure sensor page |
@@ -237,8 +238,8 @@ Context isolation is enabled. `preload.js` exposes only a narrow `window.electro
 
 | Package | Version |
 |---------|---------|
-| `electron` | `^38.2.2` |
-| `electron-builder` | `^24.13.3` |
+| `electron` | `^43.1.0` |
+| `electron-builder` | `^26.15.3` |
 | `electron-updater` | `^6.6.2` |
 | `chart.js` | `^4.4.4` |
 | `express` | `^4.21.2` |
@@ -299,7 +300,17 @@ For native module builds on Windows you may also need:
 
 For full technical detail, see [CHANGELOG.md](CHANGELOG.md).
 
-### v0.1.8 (current)
+### v0.1.9 (current)
+- **Landing page** — app now opens [`landing.html`](landing.html) on startup instead of a splash screen; displays hardware status banner and product cards for all six sensor types
+- **Hardware auto-routing** — when the device sends `{A: X}` on connect, the app reads the hardware ID (201–206) and auto-navigates to the matching sensor page (Temperature / Pressure / Level / Flow / Servo Speed / Servo Angle) after a 1.2 s delay so the landing banner can show confirmation
+- **`open-external-url` IPC** — landing page product links open in the system browser via `shell.openExternal` (gated to `http/https` URLs only)
+- **`hardware-id-received` event** — `preload.js` exposes `onHardwareIdReceived` callback so landing page can react to `{A: X}` without polling
+- **Electron upgraded** — `electron` `^38.2.2` → `^43.1.0`; `electron-builder` `^24.13.3` → `^26.15.3`
+- **Sensor product images** — added `.webp` assets for all six sensor types (`Process-Control-*-WEB.webp`)
+- **Reconnect mode restore** — after serial/USB reconnect, renderer now restores the control mode the user had active before disconnect (rather than always resetting to Manual)
+- **`splash.html` removed** — superseded by `landing.html`
+
+### v0.1.8
 - **Multi-sensor suite** — added Pressure, Flow, Level, Servo Speed, and Servo Angle pages; all share a single `renderer-hardware.js` engine configured via `window.HARDWARE_CONFIG`
 - **Intermediate T-only packet buffering** — `renderer.js` now buffers `{T}` packets (without P/F) and flushes them to the chart equally distributed between main data packets, preserving accurate timestamps
 - **Auto-reconnect UX** — on serial/USB reconnect, charts are cleared and the UI resets to Manual mode; a debounced 1 s delay sends `C:1` to the device to avoid command stacking during unstable connects

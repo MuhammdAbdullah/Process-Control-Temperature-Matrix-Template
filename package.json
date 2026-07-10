@@ -1,6 +1,6 @@
 {
   "name": "process-control-temperature-app",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Process Control Temperature - Web App for Android Tablets",
   "main": "main.js",
   "scripts": {
@@ -26,8 +26,8 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^38.2.2",
-    "electron-builder": "^24.13.3",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "nodemon": "^3.1.10"
   },
   "dependencies": {

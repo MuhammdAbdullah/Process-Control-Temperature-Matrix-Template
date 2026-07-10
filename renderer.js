@@ -1672,6 +1672,9 @@ async function sendShutdownCommandsOnReconnect() {
         return;
     }
 
+    // Remember the mode the user had selected before the safety reset
+    var modeBeforeReconnect = currentControlMode || 'manual';
+
     // ALWAYS send shutdown commands when connecting to hardware
     // This ensures the system starts in a safe state every time
     addToLog('Hardware connected - Sending initialization commands to reset everything...');
@@ -1697,32 +1700,6 @@ async function sendShutdownCommandsOnReconnect() {
         }
 
         addToLog('All initialization commands sent - System is in safe state');
-
-        // Update UI to match the safe state
-        // Set control mode to Manual in the UI
-        var controlModeSelect = document.getElementById('controlModeSelect');
-        if (controlModeSelect) {
-            controlModeSelect.value = 'manual';
-        }
-
-        // Update the global control mode variable
-        currentControlMode = 'manual';
-
-        // Update mode toggle buttons to reflect Manual state
-        document.querySelectorAll('.mode-btn').forEach(function(btn) {
-            var isActive = btn.dataset.mode === 'manual';
-            btn.classList.toggle('btn-active', isActive);
-            btn.classList.toggle('btn-primary', isActive);
-        });
-
-        // Show Manual mode controls, hide others
-        var manualControlMode = document.getElementById('manualControlMode');
-        var onoffControlMode = document.getElementById('onoffControlMode');
-        var pidControlMode = document.getElementById('pidControlMode');
-
-        if (manualControlMode) manualControlMode.style.display = 'flex';
-        if (onoffControlMode) onoffControlMode.style.display = 'none';
-        if (pidControlMode) pidControlMode.style.display = 'none';
 
         // Set fan speed to 0 in UI
         var fanSpeedInput = document.getElementById('fanSpeedInput');
@@ -1768,10 +1745,30 @@ async function sendShutdownCommandsOnReconnect() {
 
         addToLog('UI updated to match safe state');
 
-        // Reinitialize chart for Manual mode after reconnect
-        skipNextDataPoint = true;
-        initChartForManual();
-        addToLog('Chart reinitialized for Manual mode');
+        // Restore the mode the user had before reconnect, or stay in Manual if that was the mode
+        if (modeBeforeReconnect !== 'manual') {
+            addToLog('Restoring previous control mode: ' + modeBeforeReconnect);
+            skipNextDataPoint = true;
+            // window.switchControlMode is set in the init block after DOM is ready
+            if (typeof window.switchControlMode === 'function') {
+                await window.switchControlMode(modeBeforeReconnect);
+            } else {
+                // Fallback: reinit chart for the saved mode without full switch
+                currentControlMode = modeBeforeReconnect;
+                if (modeBeforeReconnect === 'onoff') {
+                    initChartForOnOff();
+                } else if (modeBeforeReconnect === 'pid') {
+                    var pidSel = document.getElementById('pidControlType');
+                    initChartForPID(pidSel ? pidSel.value : 'PID');
+                }
+            }
+        } else {
+            // Reinitialize chart for Manual mode after reconnect
+            skipNextDataPoint = true;
+            currentControlMode = 'manual';
+            initChartForManual();
+            addToLog('Chart reinitialized for Manual mode');
+        }
 
     } catch (error) {
         addToLog('Error sending initialization commands: ' + error.message);
@@ -3834,6 +3831,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         updateIntegralWindupVisibility();
     }
+
+    // Expose as global so sendShutdownCommandsOnReconnect (defined before init) can call it
+    window.switchControlMode = switchControlMode;
 
     // Setup control mode dropdown
     if (controlModeSelect) {

@@ -121,6 +121,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Navigate to a different hardware frontend (reloads the main window)
   loadHardwarePage: (type) => ipcRenderer.invoke('load-hardware-page', type),
 
+  // Fired when hardware broadcasts its type ID via {A: X} on connect
+  onHardwareIdReceived: (callback) => {
+    ipcRenderer.on('hardware-id-received', (event, data) => callback(data));
+  },
+
+  // Open a URL in the system browser (used by landing page product links)
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+
   // Remove listeners to prevent memory leaks
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);

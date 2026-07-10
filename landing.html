@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matrix Process Control Suite</title>
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/css/matrix-ui.css">
+  <style>
+    @font-face {
+      font-family: 'Azonix';
+      src: local('Azonix');
+      font-display: swap;
+    }
+    .font-sonic { font-family: 'Azonix', 'Inter', sans-serif; }
+
+    /* ── base ── */
+    html, body { height: 100%; margin: 0; overflow-x: hidden; }
+    body { display: flex; flex-direction: column; min-height: 100vh; background: oklch(var(--b1)); }
+
+    /* ── header ── */
+    #landing-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 28px;
+      background: oklch(var(--b2)/0.8);
+      border-bottom: 1px solid oklch(var(--bc)/0.08);
+      backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 50;
+    }
+    #landing-header img { height: 36px; }
+
+    /* ── banner ── */
+    #hw-banner {
+      margin: 24px 28px 0;
+      border-radius: 16px;
+      padding: 18px 24px;
+      display: flex; align-items: center; gap: 16px;
+      transition: background 0.4s, border-color 0.4s;
+      border: 1.5px solid oklch(var(--wa)/0.4);
+      background: oklch(var(--wa)/0.08);
+    }
+    #hw-banner.connected {
+      border-color: oklch(var(--in)/0.5);
+      background: oklch(var(--in)/0.08);
+    }
+    #hw-banner.success {
+      border-color: oklch(var(--su)/0.6);
+      background: oklch(var(--su)/0.1);
+    }
+
+    /* USB pulse ring */
+    .usb-ring {
+      position: relative; flex-shrink: 0;
+      width: 52px; height: 52px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .usb-ring::before, .usb-ring::after {
+      content: '';
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 2px solid oklch(var(--wa)/0.5);
+      animation: pulse-ring 2s ease-out infinite;
+    }
+    .usb-ring::after { animation-delay: 1s; }
+    #hw-banner.connected .usb-ring::before,
+    #hw-banner.connected .usb-ring::after { border-color: oklch(var(--in)/0.5); }
+    #hw-banner.success .usb-ring::before,
+    #hw-banner.success .usb-ring::after { border-color: oklch(var(--su)/0.6); animation: none; }
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .usb-icon {
+      font-size: 22px; z-index: 1;
+      filter: drop-shadow(0 0 6px oklch(var(--wa)/0.6));
+    }
+    #hw-banner.connected .usb-icon { filter: drop-shadow(0 0 6px oklch(var(--in)/0.7)); }
+    #hw-banner.success .usb-icon  { filter: drop-shadow(0 0 8px oklch(var(--su)/0.8)); }
+
+    /* banner text */
+    #banner-title { font-size: 1rem; font-weight: 600; color: oklch(var(--bc)); }
+    #banner-sub   { font-size: 0.82rem; color: oklch(var(--bc)/0.6); margin-top: 2px; }
+
+    /* assign-id row (shown when connected but no ID) */
+    #assign-row {
+      display: none; align-items: center; gap: 10px;
+      margin-left: auto; flex-shrink: 0;
+    }
+    #assign-row.visible { display: flex; }
+    #assign-type-select { min-width: 160px; }
+
+    /* ── product grid ── */
+    #product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 24px;
+      padding: 28px 28px 40px;
+      flex: 1;
+    }
+
+    /* ── product card ── */
+    .product-card {
+      position: relative; border-radius: 20px; overflow: hidden;
+      background: oklch(var(--b2)/0.7);
+      border: 1px solid oklch(var(--bc)/0.1);
+      backdrop-filter: blur(16px);
+      display: flex; flex-direction: column;
+      cursor: default;
+      transition: transform 0.08s ease, box-shadow 0.3s ease, border-color 0.3s;
+      will-change: transform;
+    }
+    .product-card:hover {
+      border-color: oklch(var(--p)/0.4);
+      box-shadow: 0 20px 60px -10px oklch(var(--p)/0.2), 0 0 0 1px oklch(var(--p)/0.15);
+    }
+    /* glow accent bar */
+    .product-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, oklch(var(--p)), oklch(var(--s)));
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .product-card:hover::before { opacity: 1; }
+
+    /* image */
+    .card-img-wrap {
+      width: 100%; aspect-ratio: 4/3; overflow: hidden;
+      background: oklch(var(--b3)/0.5);
+    }
+    .card-img-wrap img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform 0.4s ease;
+      display: block;
+    }
+    .product-card:hover .card-img-wrap img { transform: scale(1.05); }
+
+    /* card body */
+    .card-body {
+      padding: 18px 18px 20px;
+      display: flex; flex-direction: column; gap: 14px; flex: 1;
+    }
+    .card-name {
+      font-size: 1rem; font-weight: 700;
+      background: linear-gradient(135deg, oklch(var(--p)), oklch(var(--s)));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card-desc { font-size: 0.78rem; color: oklch(var(--bc)/0.5); line-height: 1.5; }
+    .card-actions { display: flex; gap: 8px; margin-top: auto; }
+    .card-actions .btn { flex: 1; font-size: 0.78rem; }
+
+    /* staggered entrance */
+    .product-card { opacity: 0; transform: translateY(24px); animation: card-in 0.5s ease forwards; }
+    @keyframes card-in { to { opacity: 1; transform: translateY(0); } }
+    .product-card:nth-child(1) { animation-delay: 0.05s; }
+    .product-card:nth-child(2) { animation-delay: 0.12s; }
+    .product-card:nth-child(3) { animation-delay: 0.19s; }
+    .product-card:nth-child(4) { animation-delay: 0.26s; }
+    .product-card:nth-child(5) { animation-delay: 0.33s; }
+
+    /* ── footer ── */
+    #landing-footer {
+      text-align: center; padding: 12px 0 18px;
+      font-size: 0.75rem; color: oklch(var(--bc)/0.35);
+    }
+
+    /* ── success overlay flash ── */
+    #success-flash {
+      pointer-events: none;
+      position: fixed; inset: 0; z-index: 999;
+      background: oklch(var(--su)/0.15);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #success-flash.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header id="landing-header">
+  <img src="assets/Matrix 2024 White.png" alt="Matrix TSL" id="header-logo">
+  <span class="font-sonic text-2xl font-black tracking-wider uppercase bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent whitespace-nowrap">PROCESS CONTROL SUITE</span>
+  <select id="theme-select" class="select select-bordered select-xs">
+    <option value="dark">Dark</option>
+    <option value="light">Light</option>
+  </select>
+</header>
+
+<!-- ── Hardware status banner ── -->
+<div id="hw-banner">
+  <div class="usb-ring">
+    <span class="usb-icon" id="banner-icon">🔌</span>
+  </div>
+  <div style="flex:1">
+    <div id="banner-title">No hardware detected — Connect your Process Control hardware via USB</div>
+    <div id="banner-sub">The app will automatically open the matching interface when a device is detected</div>
+  </div>
+  <!-- Assign-ID row (visible when connected but no ID) -->
+  <div id="assign-row">
+    <select id="assign-type-select" class="select select-sm select-bordered assign-type-select">
+      <option value="201">🌡️ Temperature</option>
+      <option value="202">⚡ Pressure</option>
+      <option value="203">📊 Level</option>
+      <option value="204">💧 Flow</option>
+      <option value="205">⚙️ Servo Speed</option>
+      <option value="206">🔄 Servo Angle</option>
+    </select>
+    <button class="btn btn-sm btn-primary" id="assign-id-btn">Assign ID to Hardware</button>
+  </div>
+</div>
+
+<!-- ── Product grid ── -->
+<main id="product-grid">
+
+  <!-- Temperature -->
+  <div class="product-card" data-tilt>
+    <div class="card-img-wrap">
+      <img src="assets/Process-Control-Temperature-CT1491-WEB.webp" alt="Temperature Control System" loading="eager">
+    </div>
+    <div class="card-body">
+      <div class="card-name">🌡️ Temperature Control</div>
+      <div class="card-desc">Compact benchtop system (CT1491) with a heated plate, dual thermocouples, and adjustable fan for air disturbance. Teaches On/Off, PI, and PID control, Ziegler-Nichols tuning, integral wind-up management, and derivative filtering for thermal process education.</div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-primary" onclick="tryApp('temperature')">▶ Try App</button>
+        <button class="btn btn-sm btn-ghost btn-outline" onclick="viewProduct('https://www.matrixtsl.com/webshop/temperature-control-system/')">🌐 Website</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level -->
+  <div class="product-card" data-tilt>
+    <div class="card-img-wrap">
+      <img src="assets/Process-Control-Level-CT5971-WEB.webp" alt="Level Control System" loading="eager">
+    </div>
+    <div class="card-body">
+      <div class="card-name">📊 Level Control</div>
+      <div class="card-desc">Benchtop system (CT5971) with a reservoir tank, variable-speed pump, pressure-based level sensor, clear process vessel, and proportional drain valve. Explores On/Off, PI, and PID control with real water level dynamics, time constant analysis, and Ziegler-Nichols tuning.</div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-primary" onclick="tryApp('level')">▶ Try App</button>
+        <button class="btn btn-sm btn-ghost btn-outline" onclick="viewProduct('https://www.matrixtsl.com/webshop/level-control-system/')">🌐 Website</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pressure -->
+  <div class="product-card" data-tilt>
+    <div class="card-img-wrap">
+      <img src="assets/Process-Control-Pressure-CT1733-WEB.webp" alt="Pressure Control System" loading="eager">
+    </div>
+    <div class="card-body">
+      <div class="card-name">⚡ Pressure Control</div>
+      <div class="card-desc">Benchtop compressor-driven system (CT1733) with a pressure vessel, Bourdon gauge, electronic sensor, and dual outflow options — manual needle valve or solenoid for step-change disturbances. Covers On/Off, PI, and PID control with integral wind-up and derivative filtering.</div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-primary" onclick="tryApp('pressure')">▶ Try App</button>
+        <button class="btn btn-sm btn-ghost btn-outline" onclick="viewProduct('https://www.matrixtsl.com/webshop/pressure-control-system/')">🌐 Website</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow -->
+  <div class="product-card" data-tilt>
+    <div class="card-img-wrap">
+      <img src="assets/Process-Control-Flow-CT0673-WEB.webp" alt="Flow Control System" loading="eager">
+    </div>
+    <div class="card-body">
+      <div class="card-name">💧 Flow Control</div>
+      <div class="card-desc">Compact benchtop unit (CT0673) with a water tank, variable-speed pump, turbine flow sensor, proportional valve, and variable-area flow meter. Adjust pump speed and valve opening to explore On/Off, PI, and PID flow regulation with Ziegler-Nichols and manual tuning techniques.</div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-primary" onclick="tryApp('flow')">▶ Try App</button>
+        <button class="btn btn-sm btn-ghost btn-outline" onclick="viewProduct('https://www.matrixtsl.com/webshop/flow-control-system/')">🌐 Website</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Servo -->
+  <div class="product-card" data-tilt>
+    <div class="card-img-wrap">
+      <img src="assets/Process-Control-Servo-Pendulum-CT9513-WEB.webp" alt="Servo Pendulum Control System" loading="eager">
+    </div>
+    <div class="card-body">
+      <div class="card-name">⚙️ Servo / Pendulum</div>
+      <div class="card-desc">Dual-mode benchtop system (CT9513) with a DC motor and attachable weighted disc for servo speed control and inverting pendulum position control. Supports USB, Bluetooth, and LAN/Wi-Fi connectivity with full MATLAB and LabVIEW API integration for advanced PID study.</div>
+      <div class="card-actions">
+        <button class="btn btn-sm btn-primary" onclick="tryApp('servo-speed')">▶ Try App</button>
+        <button class="btn btn-sm btn-ghost btn-outline" onclick="viewProduct('https://www.matrixtsl.com/webshop/servo-pendulum-motor-control-system/')">🌐 Website</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer id="landing-footer">
+  &copy; <span id="footer-year"></span> Matrix TSL &nbsp;·&nbsp; Process Control Suite
+</footer>
+
+<!-- Success overlay flash -->
+<div id="success-flash"></div>
+
+<script>
+  // ── Year ──
+  document.getElementById('footer-year').textContent = new Date().getFullYear();
+
+  // ── Theme ──
+  const html = document.documentElement;
+  const themeSelect = document.getElementById('theme-select');
+  const headerLogo = document.getElementById('header-logo');
+  const saved = localStorage.getItem('matrix-theme') || 'dark';
+  applyTheme(saved);
+
+  function applyTheme(theme) {
+    html.setAttribute('data-theme', theme);
+    themeSelect.value = theme;
+    headerLogo.src = theme === 'light' ? 'assets/Matrix 2024 Balck.png' : 'assets/Matrix 2024 White.png';
+    localStorage.setItem('matrix-theme', theme);
+  }
+  themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+
+  // ── 3D card tilt ──
+  document.querySelectorAll('[data-tilt]').forEach(card => {
+    card.addEventListener('mousemove', e => {
+      const rect = card.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top  + rect.height / 2;
+      const rx = ((e.clientY - cy) / (rect.height / 2)) * -8;
+      const ry = ((e.clientX - cx) / (rect.width  / 2)) *  8;
+      card.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-4px)`;
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = '';
+    });
+  });
+
+  // ── Navigation helpers ──
+  function tryApp(type) {
+    const pages = {
+      temperature: 'index.html',
+      level:       'level.html',
+      pressure:    'pressure.html',
+      flow:        'flow.html',
+      'servo-speed': 'servo-speed.html',
+    };
+    if (window.electronAPI) {
+      window.electronAPI.loadHardwarePage(type);
+    } else {
+      window.location.href = pages[type] || 'index.html';
+    }
+  }
+
+  function viewProduct(url) {
+    if (window.electronAPI) {
+      window.electronAPI.openExternalUrl(url);
+    } else {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  // ── Banner state machine ──
+  const banner     = document.getElementById('hw-banner');
+  const bannerIcon = document.getElementById('banner-icon');
+  const bannerTitle = document.getElementById('banner-title');
+  const bannerSub  = document.getElementById('banner-sub');
+  const assignRow  = document.getElementById('assign-row');
+  const assignBtn  = document.getElementById('assign-id-btn');
+  const assignSel  = document.getElementById('assign-type-select');
+
+  let hwConnected = false;
+
+  function setBannerDisconnected() {
+    hwConnected = false;
+    banner.className = '';
+    bannerIcon.textContent = '🔌';
+    bannerTitle.textContent = 'No hardware detected — Connect your Process Control hardware via USB';
+    bannerSub.textContent   = 'The app will automatically open the matching interface when a device is detected';
+    assignRow.classList.remove('visible');
+  }
+
+  function setBannerConnected() {
+    hwConnected = true;
+    banner.className = 'connected';
+    bannerIcon.textContent = '🔗';
+    bannerTitle.textContent = 'Hardware connected — Please assign a hardware type';
+    bannerSub.textContent   = 'Select the hardware type and click Assign ID, or wait for the device to broadcast its ID';
+    assignRow.classList.add('visible');
+  }
+
+  function setBannerSuccess(name) {
+    banner.className = 'success';
+    bannerIcon.textContent = '✅';
+    bannerTitle.textContent = `${name} hardware detected — Loading interface…`;
+    bannerSub.textContent   = 'You will be redirected automatically';
+    assignRow.classList.remove('visible');
+
+    const flash = document.getElementById('success-flash');
+    flash.classList.add('show');
+    setTimeout(() => flash.classList.remove('show'), 600);
+  }
+
+  // ── Electron event listeners ──
+  if (window.electronAPI) {
+    window.electronAPI.onConnectionStatus((_e, data) => {
+      if (data && data.connected) {
+        setBannerConnected();
+      } else {
+        setBannerDisconnected();
+      }
+    });
+
+    window.electronAPI.onHardwareIdReceived(data => {
+      if (data && data.info) {
+        setBannerSuccess(data.info.name);
+        // main.js handles loadFile after 1200ms delay — no action needed here
+      } else if (data && data.id === 0) {
+        setBannerConnected(); // no ID — show assign UI
+      }
+    });
+  }
+
+  // ── Assign ID button ──
+  assignBtn.addEventListener('click', () => {
+    const id = parseInt(assignSel.value, 10);
+    if (!isNaN(id) && window.electronAPI) {
+      window.electronAPI.sendCustomJson({ A: id }, 'assign-hardware-id');
+      assignBtn.disabled = true;
+      assignBtn.textContent = 'Sending…';
+      setTimeout(() => {
+        assignBtn.disabled = false;
+        assignBtn.textContent = 'Assign ID to Hardware';
+      }, 2000);
+    }
+  });
+
+  // ── Web-mode fallback: show connected if URL has ?connected ──
+  if (!window.electronAPI) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === '1') setBannerConnected();
+  }
+</script>
+</body>
+</html>

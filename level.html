@@ -8,8 +8,8 @@
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
     <link rel="stylesheet" href="assets/css/matrix-ui.css">
     <style>
-        @font-face { font-family:'Sonic'; src:local('Sonic'); font-display:swap; }
-        .font-sonic { font-family:'Sonic','Inter',sans-serif; }
+        @font-face { font-family:'Azonix'; src:local('Azonix'); font-display:swap; }
+        .font-sonic { font-family:'Azonix','Inter',sans-serif; }
         .chart-wrap { position:relative; width:100%; flex:1; min-height:0; }
         .chart-wrap canvas { position:absolute; inset:0; width:100%!important; height:100%!important; }
         .tab-content { display:none; } .tab-content.active { display:block; }
@@ -133,6 +133,13 @@
                             <button class="join-item btn btn-sm flex-1 mode-btn" data-mode="onoff">ON / OFF</button>
                             <button class="join-item btn btn-sm flex-1 mode-btn" data-mode="pid">PID</button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Zero Sensor -->
+                <div class="card bg-base-300 shadow">
+                    <div class="card-body p-3">
+                        <button id="zeroSensorBtn" class="btn btn-warning btn-sm w-full">Zero Sensor</button>
                     </div>
                 </div>
 
@@ -391,6 +398,24 @@
                                 <option value="servo-angle">🔄 Servo – Angle</option>
                                 <option value="servo-speed">⚙️ Servo – Speed</option>
                             </select>
+                        </div>
+                    </div>
+                    <!-- Hardware ID Assignment -->
+                    <div class="card bg-base-200 shadow max-w-sm mt-4">
+                        <div class="card-body gap-4">
+                            <h2 class="card-title text-base border-b border-warning pb-3">🆔 Hardware ID Assignment</h2>
+                            <p class="text-xs text-base-content/60">Write a hardware type ID to the connected device so it auto-routes on future connections.</p>
+                            <div class="text-xs text-base-content/50">Detected ID: <span id="detected-hw-id" class="badge badge-sm badge-ghost">None</span></div>
+                            <select id="hw-id-assign-select" class="select select-bordered select-sm w-full">
+                                <option value="201">🌡️ Temperature (201)</option>
+                                <option value="202">⚡ Pressure (202)</option>
+                                <option value="203" selected>📊 Level (203)</option>
+                                <option value="204">💧 Flow (204)</option>
+                                <option value="205">⚙️ Servo Speed (205)</option>
+                                <option value="206">🔄 Servo Angle (206)</option>
+                            </select>
+                            <button class="btn btn-sm btn-warning w-full" id="hw-id-assign-btn" onclick="assignHardwareId()">Write ID to Hardware</button>
+                            <p class="text-xs text-base-content/40">Sends <code>{A: X}</code> to the hardware firmware.</p>
                         </div>
                     </div>
                 </div>

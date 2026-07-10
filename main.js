@@ -57,8 +57,6 @@ function _applyCommandToSharedState(cmd) {
 
 // Keep a global reference of the window object
 let mainWindow;
-let splashWindow;
-let splashStartTime = 0; // Track when splash screen was shown
 let serialPort = null;
 let usbHidDevice = null; // Track USB HID device for bootloader
 let rxBuffer = Buffer.alloc(0);
@@ -84,35 +82,17 @@ let connectionTimeout = 10000; // 10 seconds timeout for connection loss
 const TARGET_VENDOR_ID = '12BF';
 const TARGET_PRODUCT_ID = '0113';
 
-function createSplashScreen() {
-  // Create the splash screen window
-  splashWindow = new BrowserWindow({
-    width: 800,
-    height: 400,
-    frame: false,                    // Remove window frame
-    alwaysOnTop: true,              // Keep on top
-    transparent: true,              // Make background transparent
-    resizable: false,               // Not resizable
-    skipTaskbar: true,              // Don't show in taskbar
-    icon: path.join(__dirname, 'assets', 'favicon.ico'),  // Window icon
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  });
+// Maps hardware ID (sent by device as {A: X}) to page file and display name.
+// Values match the {A: 201-206} codes the app already sends when selecting hardware type.
+const HARDWARE_ID_MAP = {
+  201: { type: 'temperature',  file: 'index.html',        name: 'Temperature'  },
+  202: { type: 'pressure',     file: 'pressure.html',     name: 'Pressure'     },
+  203: { type: 'level',        file: 'level.html',        name: 'Level'        },
+  204: { type: 'flow',         file: 'flow.html',         name: 'Flow'         },
+  205: { type: 'servo-speed',  file: 'servo-speed.html',  name: 'Servo Speed'  },
+  206: { type: 'servo-angle',  file: 'servo-angle.html',  name: 'Servo Angle'  },
+};
 
-  // Load splash screen HTML
-  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
-
-  // Show splash screen immediately and track start time
-  splashWindow.show();
-  splashStartTime = Date.now();
-
-  // Center the splash screen
-  splashWindow.center();
-
-  return splashWindow;
-}
 
 function createWindow() {
   // Create the browser window
@@ -130,8 +110,8 @@ function createWindow() {
     }
   });
 
-  // Load the index.html file
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  // Load landing page on startup — hardware routing happens after {A: X} is received
+  mainWindow.loadFile(path.join(__dirname, 'landing.html'));
 
   // Re-broadcast connection state to every newly loaded page (e.g. hardware type switch)
   mainWindow.webContents.on('did-finish-load', () => {
@@ -192,25 +172,10 @@ function createWindow() {
     }
   });
 
-  // Show window when ready (with minimum splash screen display time)
-  const minSplashTime = 3000; // Show splash for at least 3 seconds
-
+  // Show window as soon as it is ready
   mainWindow.once('ready-to-show', () => {
-    const elapsedTime = Date.now() - splashStartTime;
-    const remainingTime = Math.max(0, minSplashTime - elapsedTime);
-
-    // Wait for remaining time before showing main window
-    setTimeout(() => {
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.close();
-        splashWindow = null;
-      }
-      mainWindow.show();
-      // Maximize the window (full window, not fullscreen)
-      mainWindow.maximize();
-    }, remainingTime);
-
-    // Mark renderer as ready; send stored web server URL now that listeners are live
+    mainWindow.show();
+    mainWindow.maximize();
     mainWindowReady = true;
     if (global._webServerUrl) {
       mainWindow.webContents.send('web-server-url', global._webServerUrl);
@@ -590,10 +555,7 @@ app.on('browser-window-created', (event, window) => {
 
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
-  // Create splash screen first
-  createSplashScreen();
-
-  // Create main window
+  // Create main window — landing page is loaded first, hardware routing happens on {A: X} receipt
   createWindow();
 
   // ── Start embedded web server for phone/tablet mirroring ─────────────────
@@ -739,7 +701,7 @@ app.whenReady().then(() => {
     startPortPolling();
     // Start connection monitoring
     startConnectionMonitoring();
-  }, 2000); // Wait 2 seconds for splash screen
+  }, 2000); // Brief delay before starting hardware polling
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -936,11 +898,31 @@ async function connectSerial(portPath, baudRate) {
               // Check if it has the expected fields for EITHER message type:
               // Type 1: Main data (T, P, F)
               // Type 2: PID data (Pr, It, Dr, Ot)
+              // Type 3: Hardware ID broadcast (A: 1-5)
               const isMainData = jsonData.hasOwnProperty('T') && jsonData.hasOwnProperty('P') && jsonData.hasOwnProperty('F');
-              const isPidData = jsonData.hasOwnProperty('Pr') || jsonData.hasOwnProperty('It') || 
+              const isPidData = jsonData.hasOwnProperty('Pr') || jsonData.hasOwnProperty('It') ||
                                jsonData.hasOwnProperty('Dr') || jsonData.hasOwnProperty('Ot');
-              
-              if (isMainData || isPidData) {
+              const isHardwareId = jsonData.hasOwnProperty('A') && typeof jsonData.A === 'number';
+
+              if (isHardwareId) {
+                const hwId = jsonData.A;
+                const hwInfo = HARDWARE_ID_MAP[hwId];
+                console.log(`🔌 Hardware ID received: ${hwId}${hwInfo ? ` → ${hwInfo.name}` : ' (unassigned)'}`);
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('hardware-id-received', { id: hwId, info: hwInfo || null });
+                  if (hwInfo) {
+                    setTimeout(() => {
+                      if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.loadFile(path.join(__dirname, hwInfo.file));
+                      }
+                    }, 1200); // Brief delay so landing page can show success banner
+                  }
+                }
+                jsonFound = true;
+                jsonRxBuffer = jsonRxBuffer.substring(jsonEnd + 1);
+                jsonStart = jsonRxBuffer.indexOf('{');
+                continue;
+              } else if (isMainData || isPidData) {
                 // Send JSON data to renderer
                 sendJsonDataToAllWindows(jsonData);
                 console.log('✅ JSON sent to renderer:', isMainData ? 'Main Data (T,P,F)' : 'PID Data (Pr,It,Dr,Ot)');
@@ -2718,6 +2700,12 @@ ipcMain.handle('load-hardware-page', (event, type) => {
   const file = HARDWARE_HTML_MAP[type];
   if (!file || !mainWindow) return;
   mainWindow.loadFile(path.join(__dirname, file));
+});
+
+ipcMain.handle('open-external-url', (event, url) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
 });
 
 // IPC handler for opening admin panel window

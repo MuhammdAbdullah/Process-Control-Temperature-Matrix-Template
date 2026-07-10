@@ -678,6 +678,15 @@
     });
   }
 
+  // ── Zero sensor helper ────────────────────────────────────────────────────────
+  function bindZeroSensor() {
+    var btn = el('zeroSensorBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      queueSend({ Z: 1 }, 'Zero Sensor');
+    });
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────────
   var APP_MENUS        = { main: 'sidebar-main', admin: 'sidebar-admin' };
   var APP_DEFAULT_PAGES = { main: 'page-pct-main', admin: 'page-admin' };
@@ -1529,6 +1538,7 @@
     bindSlider('pidSetpointSlider', 'pidSetpointDisplay', 'T', 'PID Setpoint');
     bindValveToggle('pidValveBtn');
     if (CFG.secondaryOutput) bindSlider('pidSecondarySlider', 'pidSecondaryDisplay', 'F', CFG.secondaryOutput.label);
+    bindZeroSensor();
     var pidCommitBtn = el('pidCommitBtn');
     if (pidCommitBtn) pidCommitBtn.addEventListener('click', commitPID);
     var pidResetBtn = el('pidResetBtn');
@@ -1577,6 +1587,32 @@
     if (hwSelect) {
       hwSelect.value = CFG.type;
       hwSelect.addEventListener('change', function () { navigateToHardware(hwSelect.value); });
+    }
+
+    // ── Hardware ID assignment ───────────────────────────────────────────────
+    window.assignHardwareId = function () {
+      var sel = el('hw-id-assign-select');
+      var btn = el('hw-id-assign-btn');
+      if (!sel || !btn || !isElectron || !api.sendCustomJson) return;
+      var id = parseInt(sel.value, 10);
+      if (isNaN(id)) return;
+      btn.disabled = true; btn.textContent = 'Sending…';
+      api.sendCustomJson({ A: id }, 'assign-hardware-id').then(function () {
+        btn.textContent = '✓ Done';
+        setTimeout(function () { btn.disabled = false; btn.textContent = 'Write ID to Hardware'; }, 2000);
+      }, function () {
+        btn.textContent = '✗ Failed'; btn.disabled = false;
+      });
+    };
+
+    // Update detected-hw-id badge when hardware broadcasts its type
+    if (isElectron && api.onHardwareIdReceived) {
+      api.onHardwareIdReceived(function (data) {
+        var badge = el('detected-hw-id');
+        if (badge && data && data.id) {
+          badge.textContent = data.info ? data.info.name + ' (ID ' + data.id + ')' : 'ID ' + data.id;
+        }
+      });
     }
 
     // ── Version display ──────────────────────────────────────────────────────
